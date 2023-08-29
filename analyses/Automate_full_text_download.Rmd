@@ -1,0 +1,284 @@
+---
+title: "Automate_full_text_download"
+author: "Devi Veytia"
+date: "2023-08-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r set up libraries}
+## Load libraries
+library(dplyr)
+library(dbplyr)
+library(R.utils)
+library(RSQLite)
+library(reticulate)
+library(ggplot2)
+
+# set up functions
+sourceFn <- dir(here::here("R"))
+for(i in 1:length(sourceFn)){
+  source(here::here("R", sourceFn[i]))
+}
+
+```
+
+# SQL setup -- DO NOT RUN
+DO NOT RUN THIS -- SETUP
+```{r combine into sql, eval = FALSE}
+
+## Load all tables
+
+# Unique references
+all_db <- RSQLite::dbConnect(RSQLite::SQLite(),
+                    here::here("data","raw-data","all_tables_v1.sqlite"), 
+                                create=FALSE)
+dedups <- tbl(all_db, "uniquerefs") %>% collect() # change
+dbDisconnect(all_db)
+
+# Predictions
+predBranch <-readr::read_csv(
+  here::here("data/raw-data/coding-predictions/oro_branch_predictions.csv"),
+  show_col_types = FALSE
+)
+colnames(predBranch) <- c("analysis_id", 
+                          paste("oro_branch.Mitigation", c("mean","std","lower","upper"), sep="_"),
+                          paste("oro_branch.Nature", c("mean","std","lower","upper"), sep="_"),
+                          paste("oro_branch.Societal", c("mean","std","lower","upper"), sep="_"))
+
+predSocietal <- readr::read_csv(
+  here::here("data/raw-data/coding-predictions/oro_any_societal_predictions.csv"),
+  show_col_types = FALSE
+)
+colnames(predSocietal) = c("analysis_id", paste("Built_infrastructure_and_technology", c("mean","std","lower","upper"), sep="_"), paste("Socioinstitutional", c("mean","std","lower","upper"), sep="_"))
+
+predFish <- readr::read_csv(
+  here::here("data/raw-data/coding-predictions/safe_fish_predictions.csv"),
+  show_col_types = FALSE
+)
+colnames(predFish) = c("analysis_id",paste("safe_fish", c("mean","std","lower","upper"), sep="_"))
+
+predSpace <- readr::read_csv(
+  here::here("data/raw-data/coding-predictions/safe_space_predictions.csv"),
+  show_col_types = FALSE
+)
+colnames(predSpace) = c("analysis_id",paste("safe_space", c("mean","std","lower","upper"), sep="_"))
+
+predDataType = readr::read_csv(
+  here::here("data/raw-data/coding-predictions/data_predictions.csv"),
+  show_col_types = FALSE
+)
+colnames(predDataType) = c("analysis_id",paste("data_type.Primary", c("mean","std","lower","upper"), sep="_"),paste("data_type.Seconday", c("mean","std","lower","upper"), sep="_"))
+
+
+## create new sql table and write
+dbcon <-RSQLite::dbConnect(RSQLite::SQLite(), 
+                           dbname = here::here("data/raw-data/product4.sqlite"),
+                           create=TRUE)
+
+dbWriteTable(dbcon, "uniquerefs", dedups, overwrite = FALSE, append = FALSE)
+dbWriteTable(dbcon, "oro_branch", predBranch, overwrite = FALSE, append = FALSE)
+dbWriteTable(dbcon, "oro_type_societal", predSocietal, overwrite = FALSE, append = FALSE)
+dbWriteTable(dbcon, "safe_fish", predFish, overwrite = FALSE, append = FALSE)
+dbWriteTable(dbcon, "safe_space", predSpace, overwrite = FALSE, append = FALSE)
+dbWriteTable(dbcon, "data_type", predDataType, overwrite = FALSE, append = FALSE)
+
+
+dbDisconnect(dbcon)
+
+```
+
+
+
+# Import information for safe space or safe fish matches
+
+```{r import articles relevant for safe space or safe fish}
+p4_db <- RSQLite::dbConnect(RSQLite::SQLite(),
+                    here::here("data","raw-data","product4.sqlite"), 
+                                create=FALSE)
+
+dedups <- tbl(p4_db, "uniquerefs")
+oro_branch <- tbl(p4_db, "oro_branch")
+oro_type <- tbl(p4_db,"oro_type_societal")
+fish <- tbl(p4_db, "safe_fish")
+space <- tbl(p4_db, "safe_space")
+data_type <- tbl(p4_db, "data_type")
+
+relevantArticles <- inner_join(fish, space, by="analysis_id")%>%
+  filter(0.5 <= safe_fish_upper | 0.5 <= safe_space_upper) %>%
+  left_join(dedups, by="analysis_id") %>%
+  left_join(oro_branch, by="analysis_id") %>%
+  left_join(oro_type, by="analysis_id") %>%
+  left_join(data_type, by="analysis_id") 
+
+## summaries
+summaries <- relevantArticles %>%
+  summarise(
+    n_safe_fish_OR_safe_space = n(),
+    n_societal = sum(0.5 <= oro_branch.Societal_upper),
+    n_natural = sum(0.5 <= oro_branch.Nature_upper),
+    n_mitigation = sum(0.5 <= oro_branch.Mitigation_upper),
+    n_ONLY_mitigation = sum(0.5 <= oro_branch.Mitigation_upper & 
+                              oro_branch.Nature_upper < 0.5 &
+                              oro_branch.Societal_upper < 0.5),
+    n_primary = sum(0.5 <= data_type.Primary_upper)
+  )
+print(summaries)
+
+#   n_safe_fish_OR_safe_space n_societal n_natural n_mitigation n_ONLY_mitigation n_primary
+#                       <int>      <int>     <int>        <int>             <int>     <int>
+# 1                     12898       5452      5540         3331              2893     12898
+
+
+## Collect
+relevantArticles <- relevantArticles %>%
+  collect()
+
+
+## Disconnect
+dbDisconnect(p4_db)
+
+```
+
+
+
+
+# Automatic full text extraction
+
+
+```{r extract full text automatically from scihub}
+# set scihub url to renviron 
+#usethis::edit_r_environ() 
+# opens .Renviron file where I add teh line of text: SCIHUB_URL = "https://sci-hub.se/"
+
+# clean dois 
+dois <- relevantArticles$doi
+dois <- ifelse(is.na(dois), NA, gsub("https://doi.org/", "", dois))
+dois <- head(dois) # just do a few for now
+
+dois[1] <- "10.1080/08098131.2018.1490919" # I know this one will work
+
+# set directory to place downloaded pdfs
+path_pdf = here::here("data/raw-data/full-texts")
+if(isFALSE(dir.exists(path_pdf))){
+  dir.create(path_pdf, showWarnings = FALSE, recursive = TRUE)
+}
+
+source(here::here("R/my_get_pdf.R"))
+
+## Create a dataframe of the ids, and whether or not a pdf was found
+doisFound <- data.frame(
+  doi = dois,
+  analysis_id = relevantArticles$analysis_id[1:length(dois)],
+  duplicate_id = relevantArticles$duplicate_id[1:length(dois)],
+  fullTextFound = logical(length(dois))
+)
+
+# download pdf if possible
+for (i in 1:length(dois)) { 
+  
+  if (length(dois[i]) == 1) {
+    if(is.na(dois[i])){
+      next
+    }
+    
+    # make filename
+    id = relevantArticles$analysis_id[i]
+    auth = clean_text(substring(relevantArticles$author[i],1,10))
+    tit = clean_text(substring(relevantArticles$title[i], 1, 30))
+    yr = relevantArticles$year[i]
+    fn = paste(id, auth, tit, yr, sep="_")
+    
+ 
+    
+    errorMessage = capture.output(my_get_pdf(doi=dois[i], path = path_pdf, filename = fn, overwrite=TRUE),
+                                  type = "message")
+    if(grepl("No PDF found", errorMessage)){
+      doisFound$fullTextFound[i] <- FALSE
+    }else{
+      doisFound$fullTextFound[i] <- TRUE
+    }
+    
+    Sys.sleep(sample(seq(0, 5, by = 0.01), 1))
+  }
+}
+
+
+## Write results of full text retreival
+write.csv(doisFound, file=here::here("data/raw-data/full-texts/results-full-text-retreival.csv"))
+```
+
+
+For the articles that can't be extracted on sci-hub, maybe can do a WOS search like below:
+
+```{r write dois to extract full texts from WOS}
+# write dois to extract full texts
+dois <- relevantArticles$doi[!is.na(relevantArticles$doi)]
+length(dois) # 11256
+nrow(relevantArticles) # 12898
+nrow(relevantArticles)-length(dois) # 1642 missing dois 
+
+cat(paste0(dois, collapse=" OR "), file = here::here("data/raw-data/dois_for_full_text_retreival.txt"))
+```
+
+
+
+
+# Exploration
+
+
+```{r go back to basics with rvest and curl}
+library(tidyverse)
+library(here)
+library(rvest)
+library(purrr)
+library(rJava)
+
+
+page <- read_html("https://sci-hub.se/10.1080/08098131.2018.1490919")
+
+# name and create our download destination folder
+pdf_dir <- here::here("data/raw-data/full-texts")
+
+elements <- page %>%
+  html_elements(xpath = "//*[@id='buttons']") %>%
+  html_children()
+
+
+rvest::read_html("https://sci-hub.se/10.1080/08098131.2018.1490919") |> 
+      rvest::html_elements("button") |> 
+      rvest::html_attr("onclick")
+
+# searching for fit following button link: "location.href='/tree/66/8e/668e03ae008132d42d371de05b207a15.pdf?download=true'"
+download_link <- regmatches(elements, gregexpr("location.href[^;]+download=true", elements))
+
+# transform it into the following format: 'https://sci-hub.se/tree/66/8e/668e03ae008132d42d371de05b207a15.pdf?download=true'
+download_link <- unlist(download_link)
+download_link <- download_link[1]
+download_link <- gsub("location.href='","",download_link)
+download_link <- ifelse(startsWith(download_link,"/"), sub(".", "", download_link), download_link)
+download_link <- paste0("https://sci-hub.se/",download_link)
+
+# Use this to download
+curl::curl_download(download_link,here::here("data/raw-data/full-texts/download2.pdf"))
+
+errorMessage <- try(curl::curl_download("https://sci-hub.se/downloads/2022-11-08/35/demarco2021.pdf?download=true",here::here("data/raw-data/full-texts/download3.pdf")), silent = TRUE)
+
+errorMessage <- try(curl::curl_download(download_link,here::here("data/raw-data/full-texts/download2.pdf")),
+                    silent = TRUE)
+
+if(grepl("error", errorMessage, ignore.case = TRUE)){
+  next
+}
+
+curl::curl_download('https://sci-hub.se/tree/66/8e/668e03ae008132d42d371de05b207a15.pdf?download=true',
+                    here::here("data/raw-data/full-texts/download2.pdf"))
+```
+
+
+
+
