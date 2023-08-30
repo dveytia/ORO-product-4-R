@@ -236,24 +236,31 @@ pdfs <- list.files(here::here("data/raw-data/full-texts/"), pattern = "pdf$")
 
 
 # function to remove reference pages and keyword match
+source(here::here("R/bool_detect.R")) # requirement
+
 read_pdf <- function(pdf_path, query){
-  source(here::here("R/bool_detect.R")) # requirement
-  # Read in pdf text
-  txt <- pdftools::pdf_text(pdf_path)
-  # remove all the text after the references and combine into one
-  refStart <- grep("\nReferences\n", txt, ignore.case=TRUE) # page where references start
-  if(length(refStart) > 1){
-    refStart <- min(refStart) # if more than one match pick the earliest
-  }
-  if(length(refStart) == 1){
-    txt[refStart] <- gsub("\nReferences\n.*","", txt[refStart]) # remove all text from references onwards
-    txt <- paste(txt[1:refStart], collapse=" ")
-  }else{
-    txt <- paste(txt, collapse=" ")
-  }
-  # Search for keywords
-  match <- bool_detect2(txt, query)
-  return(match)
+  tryCatch({ # Set up try catch
+    # Read in pdf text
+    txt <- pdftools::pdf_text(pdf_path)
+    # remove all the text after the references and combine into one
+    refStart <- grep("\nReferences\n", txt, ignore.case=TRUE) # page where references start
+    if(length(refStart) > 1){
+      refStart <- min(refStart) # if more than one match pick the earliest
+    }
+    if(length(refStart) == 1){
+      txt[refStart] <- gsub("\nReferences\n.*","", txt[refStart]) # remove all text from references onwards
+      txt <- paste(txt[1:refStart], collapse=" ")
+    }else{
+      txt <- paste(txt, collapse=" ")
+    }
+    # Search for keywords
+    match <- bool_detect2(txt, query)
+    return(match)
+  }, error = function(e){
+    
+    # If an error occurs, return NA
+    return(NA) 
+  })
 }
 
 
