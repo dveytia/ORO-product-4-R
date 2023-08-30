@@ -226,6 +226,42 @@ cat(paste0(dois, collapse=" OR "), file = here::here("data/raw-data/dois_for_ful
 ```
 
 
+# Pdf text keyword search
+
+```{r}
+library(pdftools)
+
+pdfs <- list.files(here::here("data/raw-data/full-texts/"), pattern = "pdf$")
+
+
+
+# function to remove reference pages and keyword match
+read_pdf <- function(pdf_path, query){
+  source(here::here("R/bool_detect.R")) # requirement
+  # Read in pdf text
+  txt <- pdftools::pdf_text(pdf_path)
+  # remove all the text after the references and combine into one
+  refStart <- grep("\nReferences\n", txt, ignore.case=TRUE) # page where references start
+  if(length(refStart) > 1){
+    refStart <- min(refStart) # if more than one match pick the earliest
+  }
+  if(length(refStart) == 1){
+    txt[refStart] <- gsub("\nReferences\n.*","", txt[refStart]) # remove all text from references onwards
+    txt <- paste(txt[1:refStart], collapse=" ")
+  }else{
+    txt <- paste(txt, collapse=" ")
+  }
+  # Search for keywords
+  match <- bool_detect2(txt, query)
+  return(match)
+}
+
+
+# Calculate vector of whether a keyword match was found in the text
+matches <- sapply(pdfs, FUN = function(x){read_pdf(pdf_path = here::here("data/raw-data/full-texts",x),
+                                                   query = "climat* AND change")})
+
+```
 
 
 # Exploration
