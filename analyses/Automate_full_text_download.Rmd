@@ -75,10 +75,20 @@ predDataType = readr::read_csv(
 colnames(predDataType) = c("analysis_id",paste("data_type.Primary", c("mean","std","lower","upper"), sep="_"),paste("data_type.Seconday", c("mean","std","lower","upper"), sep="_"))
 
 
+predImplemented = readr::read_csv(
+  here::here("data/raw-data/coding-predictions/societal_implemented_predictions.csv"),
+  show_col_types = FALSE
+)
+colnames(predImplemented) = c("analysis_id",paste("implemented", c("mean","std","lower","upper"), sep="_"))
+
+
 ## create new sql table and write
+# dbcon <-RSQLite::dbConnect(RSQLite::SQLite(), 
+#                            dbname = here::here("data/raw-data/product4.sqlite"),
+#                            create=TRUE)
 dbcon <-RSQLite::dbConnect(RSQLite::SQLite(), 
                            dbname = here::here("data/raw-data/product4.sqlite"),
-                           create=TRUE)
+                           create=FALSE)
 
 dbWriteTable(dbcon, "uniquerefs", dedups, overwrite = FALSE, append = FALSE)
 dbWriteTable(dbcon, "oro_branch", predBranch, overwrite = FALSE, append = FALSE)
@@ -86,6 +96,7 @@ dbWriteTable(dbcon, "oro_type_societal", predSocietal, overwrite = FALSE, append
 dbWriteTable(dbcon, "safe_fish", predFish, overwrite = FALSE, append = FALSE)
 dbWriteTable(dbcon, "safe_space", predSpace, overwrite = FALSE, append = FALSE)
 dbWriteTable(dbcon, "data_type", predDataType, overwrite = FALSE, append = FALSE)
+dbWriteTable(dbcon, "implemented", predImplemented, overwrite = FALSE, append = FALSE)
 
 
 dbDisconnect(dbcon)
@@ -107,13 +118,15 @@ oro_type <- tbl(p4_db,"oro_type_societal")
 fish <- tbl(p4_db, "safe_fish")
 space <- tbl(p4_db, "safe_space")
 data_type <- tbl(p4_db, "data_type")
+implemented <- tbl(p4_db, "implemented")
 
 relevantArticles <- inner_join(fish, space, by="analysis_id")%>%
   filter(0.5 <= safe_fish_upper | 0.5 <= safe_space_upper) %>%
   left_join(dedups, by="analysis_id") %>%
   left_join(oro_branch, by="analysis_id") %>%
   left_join(oro_type, by="analysis_id") %>%
-  left_join(data_type, by="analysis_id") 
+  left_join(data_type, by="analysis_id") %>%
+  left_join(implemented, by = "analysis_id")
 
 ## summaries
 summaries <- relevantArticles %>%
@@ -125,9 +138,12 @@ summaries <- relevantArticles %>%
     n_ONLY_mitigation = sum(0.5 <= oro_branch.Mitigation_upper & 
                               oro_branch.Nature_upper < 0.5 &
                               oro_branch.Societal_upper < 0.5),
-    n_primary = sum(0.5 <= data_type.Primary_upper)
+    n_primary = sum(0.5 <= data_type.Primary_upper),
+    n_societal_fish_or_space_implemented = sum(0.5 <= oro_branch.Societal_upper &
+                                                 0.5 <= implemented_upper)
   )
 print(summaries)
+summaries <- summaries %>% collect()
 
 #   n_safe_fish_OR_safe_space n_societal n_natural n_mitigation n_ONLY_mitigation n_primary
 #                       <int>      <int>     <int>        <int>             <int>     <int>
