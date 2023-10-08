@@ -1,0 +1,148 @@
+---
+title: "0-Set-up-sql-database"
+author: "Devi Veytia"
+date: "2023-10-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This document takes the csv files of the predictions for relevant articles and adds them to an sql database with all the metadata for these articles
+
+
+```{r set up libraries}
+## Load libraries
+library(dplyr)
+library(dbplyr)
+library(R.utils)
+library(RSQLite)
+library(reticulate)
+library(ggplot2)
+
+# set up functions
+sourceFn <- dir(here::here("R"))
+for(i in 1:length(sourceFn)){
+  source(here::here("R", sourceFn[i]))
+}
+
+```
+
+
+
+# SQL setup -- DO NOT RUN
+
+```{r combine into sql, eval = FALSE}
+
+## Load all tables
+
+# Unique references
+all_db <- RSQLite::dbConnect(RSQLite::SQLite(),
+                    here::here("data","raw-data","all_tables_v1.sqlite"), 
+                                create=FALSE)
+dedups <- tbl(all_db, "uniquerefs") %>% collect() # change
+dbDisconnect(all_db)
+
+# Predictions
+predBranch <-readr::read_csv(
+  here::here("data/raw-data/coding-predictions/oro_branch_predictions.csv"),
+  show_col_types = FALSE
+)
+colnames(predBranch) <- c("analysis_id", 
+                          paste("oro_branch.Mitigation", c("mean","std","lower","upper"), sep="_"),
+                          paste("oro_branch.Nature", c("mean","std","lower","upper"), sep="_"),
+                          paste("oro_branch.Societal", c("mean","std","lower","upper"), sep="_"))
+
+predSocietal <- readr::read_csv(
+  here::here("data/raw-data/coding-predictions/oro_any_societal_predictions.csv"),
+  show_col_types = FALSE
+)
+colnames(predSocietal) = c("analysis_id", paste("Built_infrastructure_and_technology", c("mean","std","lower","upper"), sep="_"), paste("Socioinstitutional", c("mean","std","lower","upper"), sep="_"))
+
+predFish <- readr::read_csv(
+  here::here("data/raw-data/coding-predictions/safe_fish_predictions.csv"),
+  show_col_types = FALSE
+)
+colnames(predFish) = c("analysis_id",paste("safe_fish", c("mean","std","lower","upper"), sep="_"))
+
+predSpace <- readr::read_csv(
+  here::here("data/raw-data/coding-predictions/safe_space_predictions.csv"),
+  show_col_types = FALSE
+)
+colnames(predSpace) = c("analysis_id",paste("safe_space", c("mean","std","lower","upper"), sep="_"))
+
+predDataType = readr::read_csv(
+  here::here("data/raw-data/coding-predictions/data_predictions.csv"),
+  show_col_types = FALSE
+)
+colnames(predDataType) = c("analysis_id",paste("data_type.Primary", c("mean","std","lower","upper"), sep="_"),paste("data_type.Seconday", c("mean","std","lower","upper"), sep="_"))
+
+
+predImplemented = readr::read_csv(
+  here::here("data/raw-data/coding-predictions/societal_implemented_predictions.csv"),
+  show_col_types = FALSE
+)
+colnames(predImplemented) = c("analysis_id",paste("implemented", c("mean","std","lower","upper"), sep="_"))
+
+
+## create new sql table and write
+# dbcon <-RSQLite::dbConnect(RSQLite::SQLite(), 
+#                            dbname = here::here("data/raw-data/product4.sqlite"),
+#                            create=TRUE)
+dbcon <-RSQLite::dbConnect(RSQLite::SQLite(), 
+                           dbname = here::here("data/raw-data/product4.sqlite"),
+                           create=FALSE)
+
+dbWriteTable(dbcon, "uniquerefs", dedups, overwrite = FALSE, append = FALSE)
+dbWriteTable(dbcon, "oro_branch", predBranch, overwrite = FALSE, append = FALSE)
+dbWriteTable(dbcon, "oro_type_societal", predSocietal, overwrite = FALSE, append = FALSE)
+dbWriteTable(dbcon, "safe_fish", predFish, overwrite = FALSE, append = FALSE)
+dbWriteTable(dbcon, "safe_space", predSpace, overwrite = FALSE, append = FALSE)
+dbWriteTable(dbcon, "data_type", predDataType, overwrite = FALSE, append = FALSE)
+dbWriteTable(dbcon, "implemented", predImplemented, overwrite = FALSE, append = FALSE)
+
+
+dbDisconnect(dbcon)
+
+```
+
+
+```{r make a separate table for relevant articles for this product}
+p4_db <- RSQLite::dbConnect(RSQLite::SQLite(),
+                    here::here("data","raw-data","product4.sqlite"), 
+                                create=FALSE)
+
+dedups <- tbl(p4_db, "uniquerefs")
+oro_branch <- tbl(p4_db, "oro_branch")
+oro_type <- tbl(p4_db,"oro_type_societal")
+fish <- tbl(p4_db, "safe_fish")
+space <- tbl(p4_db, "safe_space")
+data_type <- tbl(p4_db, "data_type")
+implemented <- tbl(p4_db, "implemented")
+
+# Subset the dedups table to just those that are relevant
+relevantdedups <- inner_join(fish, space, by="analysis_id")%>%
+  filter(0.5 <= safe_fish_upper | 0.5 <= safe_space_upper) %>%
+  left_join(dedups, by="analysis_id") %>%
+  left_join(oro_branch, by="analysis_id") %>%
+  left_join(oro_type, by="analysis_id") %>%
+  left_join(data_type, by="analysis_id") %>%
+  left_join(implemented, by = "analysis_id") %>%
+  filter(0.5 <= oro_branch.Societal_upper & 0.5 <= implemented_upper) %>%
+  collect()
+
+dim(relevantdedups) # [1] 3728   74
+
+# write to the sql database
+dbWriteTable(p4_db, "relevantdedups_p4", relevantdedups, overwrite = FALSE, append = FALSE)
+
+
+# Disconnect the database
+dbDisconnect(p4_db)
+
+```
+
+
+
+

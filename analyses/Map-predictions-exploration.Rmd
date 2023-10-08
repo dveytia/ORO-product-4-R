@@ -1,0 +1,114 @@
+---
+title: "Map-predictions-exploration"
+author: "Devi Veytia"
+date: "2023-10-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This document will read in articles that are predicted to be relevant for Product 4 from the systematic map, and upload them onto sysrev for exploration.
+
+Relevant articles are defined as those with a mean predicted relevance for Societal options, safe fish OR safe space, and are "implemented".
+
+# Set up -- run before anything else
+
+```{r set up libraries}
+## Load libraries
+library(dplyr)
+library(dbplyr)
+library(R.utils)
+library(RSQLite)
+library(reticulate)
+library(ggplot2)
+
+# set up functions
+sourceFn <- dir(here::here("R"))
+for(i in 1:length(sourceFn)){
+  source(here::here("R", sourceFn[i]))
+}
+
+```
+
+```{r set the seed}
+addTaskCallback(function(...) {set.seed(123);TRUE})
+```
+
+```{r load relevant articles}
+# connect to database
+p4_db <- RSQLite::dbConnect(RSQLite::SQLite(),
+                    here::here("data","raw-data","product4.sqlite"), 
+                                create=FALSE)
+
+# Collect table
+relevantdedups <- tbl(p4_db, "relevantdedups_p4") %>%
+  collect()
+
+# Disconnect the database
+dbDisconnect(p4_db)
+
+```
+
+
+# Create training sets
+
+
+```{r write all articles for scoping}
+# write files
+write.table(relevantdedups %>%
+              select(analysis_id, title, abstract, keywords) %>%
+              rename(id = analysis_id),
+            file = here::here("data/derived-data/scoping/all_articles_scope.txt"),
+            row.names=F, col.names=TRUE, sep='\t', quote=FALSE)
+
+```
+
+
+```{r randomly select 4 training sets and write for export to Abstrackr}
+
+## Randomly select articles for training sets
+nSets <- 4
+setSize <- 30
+nRecs <- nSets*setSize
+
+
+
+## Allocate references randomly into training sets and save .bib files and .txt files for Colandr and Abstrackr respectively
+
+
+# pull out the articles I need randomly
+recsSub <- relevantdedups[sample(nrow(relevantdedups), nRecs, replace=FALSE),]
+
+# Set a column to ID what set it belongs to
+recsSub$Set <- rep(1:nSets, setSize)
+
+
+
+## Write each set to a seperate file
+for(i in 1:nSets){
+  temp <- subset(recsSub, Set == i)
+  temp$Set <- NA
+
+  # write files
+  tempFileName <- here::here("data/derived-data/review-team-train-screen",paste0("pilot_screen_",i))
+  # revtools::write_bibliography(temp,
+  #                            paste0(tempFileName,".ris"))
+
+  temp <- temp %>%
+    select(analysis_id, title, abstract, keywords) %>%
+    rename(id = analysis_id)
+
+  write.table(temp,
+             file = paste0(tempFileName,".txt"),
+             row.names=F, col.names=TRUE, sep='\t', quote=FALSE)
+}
+
+```
+
+
+
+
+
+
