@@ -52,24 +52,54 @@ dbDisconnect(p4_db)
 ```
 
 
-# Create training sets
+# Write all articles for scoping in sysrev
 
 
-```{r write all articles for scoping}
+```{r write all articles for scoping in sysrev}
 # write files
-write.table(relevantdedups %>%
-              select(analysis_id, title, abstract, keywords) %>%
-              rename(id = analysis_id),
-            file = here::here("data/derived-data/scoping/all_articles_scope.txt"),
-            row.names=F, col.names=TRUE, sep='\t', quote=FALSE)
+
+# ## Tried writing for abstrackr but it was being buggy uploading data -- page kept going blank
+# write.table(relevantdedups %>%
+#               select(analysis_id, title, abstract) %>%
+#               rename(id = analysis_id) %>%
+#               head(),
+#             file = here::here("data/derived-data/scoping/all_articles_scope.txt"),
+#             row.names=F, col.names=TRUE, sep='\t') #, quote=FALSE
+
+
+## Instead format for sysrev. Downside is that sysrev does not conserve article labels so will have to match via text after
+temp <- relevantdedups %>%
+  select(analysis_id, type, title, journal, year, volume, number, abstract,doi, # author, 
+         issn, keywords) %>%
+  rename(label = analysis_id) %>%
+  as.data.frame()
+
+# write in chunks to .ris files for upload onto sysrev
+
+require(tidyverse)
+nparts = 5
+rowCount <- nrow(temp)/nparts
+temp %>% 
+  mutate(Group = ceiling((row_number()) / rowCount)) %>% 
+  group_by(Group) %>% 
+  group_walk(
+    function(.x, .y) {
+      revtools::write_bibliography(as.data.frame(.x), filename = here::here(
+        "data/derived-data/scoping/",paste0("all_articles_scope_p",.y$Group,".ris")))
+    }
+  )
+
+
 
 ```
 
 
-```{r randomly select 4 training sets and write for export to Abstrackr}
+# Create reviewer training sets
+
+```{r randomly select articles for training sets and write for export to sysrev}
 
 ## Randomly select articles for training sets
-nSets <- 4
+nSets <- 6
 setSize <- 30
 nRecs <- nSets*setSize
 
@@ -81,29 +111,22 @@ nRecs <- nSets*setSize
 # pull out the articles I need randomly
 recsSub <- relevantdedups[sample(nrow(relevantdedups), nRecs, replace=FALSE),]
 
-# Set a column to ID what set it belongs to
-recsSub$Set <- rep(1:nSets, setSize)
 
+# Split into number of sets and write to ris file
+require(tidyverse)
+rowCount <- nrow(recsSub)/nSets
+recsSub %>% 
+  mutate(Group = ceiling((row_number()) / rowCount)) %>% 
+  group_by(Group) %>% 
+  group_walk(
+    function(.x, .y) {
+      revtools::write_bibliography(as.data.frame(.x), filename = here::here(
+        "data/derived-data/review-team-train-screen/",paste0("pilot_screen_p",.y$Group,".ris")));
+      write.table(as.data.frame(.x), file = here::here(
+        "data/derived-data/review-team-train-screen/",paste0("pilot_screen_p",.y$Group,".txt")), row.names = F, col.names = T, sep='\t', quote=FALSE)
+    }
+  )
 
-
-## Write each set to a seperate file
-for(i in 1:nSets){
-  temp <- subset(recsSub, Set == i)
-  temp$Set <- NA
-
-  # write files
-  tempFileName <- here::here("data/derived-data/review-team-train-screen",paste0("pilot_screen_",i))
-  # revtools::write_bibliography(temp,
-  #                            paste0(tempFileName,".ris"))
-
-  temp <- temp %>%
-    select(analysis_id, title, abstract, keywords) %>%
-    rename(id = analysis_id)
-
-  write.table(temp,
-             file = paste0(tempFileName,".txt"),
-             row.names=F, col.names=TRUE, sep='\t', quote=FALSE)
-}
 
 ```
 
