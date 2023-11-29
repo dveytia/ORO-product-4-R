@@ -1,0 +1,170 @@
+---
+title: "0.3_prepare-screening-article-sets_safe-fish"
+author: "Devi Veytia"
+date: "2023-11-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Set up -- run before anything else
+
+```{r set up libraries}
+## Load libraries
+library(dplyr)
+library(dbplyr)
+library(R.utils)
+library(RSQLite)
+library(ggplot2)
+
+# set up functions
+sourceFn <- dir(here::here("R"))
+for(i in 1:length(sourceFn)){
+  source(here::here("R", sourceFn[i]))
+}
+
+```
+
+```{r set the seed}
+addTaskCallback(function(...) {set.seed(123);TRUE})
+```
+
+
+# Sample the articles for reviewer training
+
+Here there is no need to re-train the model because all will be screened, so just normal random sampling is fine
+
+```{r set sampling size requirements}
+# Number of articles needed in total = # articles for the training sets + # articles for the screening
+# No of articles for training sets
+nSets <- 8
+setSize <- 30
+nRecsTrain <- nSets*setSize
+nRecsTotal = nRecsTrain 
+```
+
+```{r load relevant articles}
+# connect to database
+p4_db <- RSQLite::dbConnect(RSQLite::SQLite(),
+                    here::here("data","raw-data","product4.sqlite"), 
+                                create=FALSE)
+
+
+# Collect table of unique references and categories (impact nature + different ORO types) to sample from
+relevantdedups <- tbl(p4_db, "uniquerefs") %>%
+  select(analysis_id, type, title, journal, year, volume, number, abstract,doi, # author, 
+         issn, keywords) 
+
+pred_safe_fish <- tbl(p4_db, "safe_fish") %>% # safe fish predictions
+  filter(0.5 <= safe_fish_mean) %>% # filter relevance for safe fish
+  select(analysis_id, safe_fish_mean) 
+
+pred_implemented <- tbl(p4_db, "implemented") %>% # implemented predictions
+  filter(0.5 <= implemented_mean) %>% # filter relevance
+  select(analysis_id, implemented_mean)
+
+sampleDf <- pred_safe_fish %>%
+  inner_join(pred_implemented, by="analysis_id") %>%
+  left_join(relevantdedups, by="analysis_id") %>%
+  collect()
+
+nrow(sampleDf)
+
+
+## Write out to ris files for training sets
+sampleDf$screenSample <- rep(NA, nrow(sampleDf))
+trainSamples <- sample(sampleDf$analysis_id,size = nRecsTotal, replace = FALSE) # sample ids
+startInd <- seq(1, nRecsTrain, by = setSize) # the start id of the set
+
+for(i in 1:length(startInd)){
+  trainSamplesTemp <- trainSamples[startInd[i]:(startInd[i]+setSize)] # sample ids in that set
+  # write to file
+  temp <- sampleDf %>%
+    filter(analysis_id %in% trainSamplesTemp) %>%
+    select(analysis_id, type, title, journal, year, volume, number, abstract,doi, # author, 
+         issn, keywords)
+  temp <- as.data.frame(temp)
+  revtools::write_bibliography(temp, filename = here::here(
+        "data/derived-data/screen-train/",paste0("train_set",i,".ris")))
+  # indicate which training set that article was put into
+  sampleDf$screenSample[sampleDf$analysis_id %in% trainSamplesTemp] <- paste("train_set",i, sep="_")
+}
+
+
+## Write out files into larger batches that are not in the training sets
+# because there are not that many can do it all at once
+sampleDf %>%
+  filter(is.na(screenSample))%>%
+  select(analysis_id, type, title, journal, year, volume, number, abstract,doi, # author, 
+         issn, keywords)%>%
+  as.data.frame()%>%
+  revtools::write_bibliography(filename = here::here("data/derived-data/screen-all/screen_set.ris"))
+
+
+
+
+
+dbWriteTable(p4_db, "trainRecsSample", sampleDf, overwrite = FALSE, append = FALSE)
+
+# Disconnect the database
+dbDisconnect(p4_db)
+
+```
+
+
+
+# Write samples of articles for importing into sysrev
+
+
+```{r select articles and packages into sets of .ris files for export to sysrev}
+# connect to database
+p4_db <- RSQLite::dbConnect(RSQLite::SQLite(),
+                      here::here("data","raw-data","product4.sqlite"),
+                                 create=FALSE)
+
+
+# Collect table of unique references and sample IDs
+relevantdedups <- tbl(p4_db, "uniquerefs") %>%
+  select(analysis_id, type, title, journal, year, volume, number, abstract,doi, # author, 
+         issn, keywords) 
+sampleDf2 <- tbl(p4_db, "seenRecsSample") %>%
+  select(analysis_id) %>% 
+  left_join(relevantdedups, by="analysis_id") %>%
+  rename(label = analysis_id) %>%
+  collect()
+
+dim(sampleDf2)
+
+## Write Training sets
+# Number of articles needed in total = # articles for the training sets + # articles for the screening
+# No of articles for training sets
+startInd <- seq(1, nRecsTrain, by = setSize) # the start id of the set
+
+for(i in 1:length(startInd)){
+  temp <- sampleDf2[startInd[i]:(startInd[i]+setSize),]
+  temp <- as.data.frame(temp)
+  revtools::write_bibliography(temp, filename = here::here(
+        "data/derived-data/screen-train/",paste0("train_set",i,".ris")))
+}
+
+
+## Write the rest into larger files 
+#(~700 recs) for upload when ready to do large screening
+startInd <- seq(nRecsTrain+1, nrow(sampleDf2), by = 700)
+endInd <- startInd+700
+endInd <- ifelse(endInd > nrow(sampleDf2), nrow(sampleDf2),endInd)
+
+for(i in 1:length(startInd)){
+  temp <- sampleDf2[startInd[i]:(startInd[i]+setSize),]
+  temp <- as.data.frame(temp)
+  revtools::write_bibliography(temp, filename = here::here(
+        "data/derived-data/screen-all/",paste0("screen_set",i,".ris")))
+}
+
+
+# Disconnect the database
+dbDisconnect(p4_db)
+
+```
