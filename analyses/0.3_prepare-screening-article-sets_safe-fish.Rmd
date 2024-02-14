@@ -104,8 +104,6 @@ sampleDf %>%
 
 
 
-
-
 dbWriteTable(p4_db, "trainRecsSample", sampleDf, overwrite = FALSE, append = FALSE)
 
 # Disconnect the database
@@ -114,57 +112,3 @@ dbDisconnect(p4_db)
 ```
 
 
-
-# Write samples of articles for importing into sysrev
-
-
-```{r select articles and packages into sets of .ris files for export to sysrev}
-# connect to database
-p4_db <- RSQLite::dbConnect(RSQLite::SQLite(),
-                      here::here("data","raw-data","product4.sqlite"),
-                                 create=FALSE)
-
-
-# Collect table of unique references and sample IDs
-relevantdedups <- tbl(p4_db, "uniquerefs") %>%
-  select(analysis_id, type, title, journal, year, volume, number, abstract,doi, # author, 
-         issn, keywords) 
-sampleDf2 <- tbl(p4_db, "seenRecsSample") %>%
-  select(analysis_id) %>% 
-  left_join(relevantdedups, by="analysis_id") %>%
-  rename(label = analysis_id) %>%
-  collect()
-
-dim(sampleDf2)
-
-## Write Training sets
-# Number of articles needed in total = # articles for the training sets + # articles for the screening
-# No of articles for training sets
-startInd <- seq(1, nRecsTrain, by = setSize) # the start id of the set
-
-for(i in 1:length(startInd)){
-  temp <- sampleDf2[startInd[i]:(startInd[i]+setSize),]
-  temp <- as.data.frame(temp)
-  revtools::write_bibliography(temp, filename = here::here(
-        "data/derived-data/screen-train/",paste0("train_set",i,".ris")))
-}
-
-
-## Write the rest into larger files 
-#(~700 recs) for upload when ready to do large screening
-startInd <- seq(nRecsTrain+1, nrow(sampleDf2), by = 700)
-endInd <- startInd+700
-endInd <- ifelse(endInd > nrow(sampleDf2), nrow(sampleDf2),endInd)
-
-for(i in 1:length(startInd)){
-  temp <- sampleDf2[startInd[i]:(startInd[i]+setSize),]
-  temp <- as.data.frame(temp)
-  revtools::write_bibliography(temp, filename = here::here(
-        "data/derived-data/screen-all/",paste0("screen_set",i,".ris")))
-}
-
-
-# Disconnect the database
-dbDisconnect(p4_db)
-
-```
