@@ -111,4 +111,11 @@ dbDisconnect(p4_db)
 
 ```
 
+# Merge in sysrev screening results with data
+
+```{r}
+# Note that I can merge by title and it works. There are however 8 duplicates in the sysrev dataset to merge
+sampleDf_merge <- merge(sampleDf, sysrevArticles, all = TRUE)
+```
+
 
