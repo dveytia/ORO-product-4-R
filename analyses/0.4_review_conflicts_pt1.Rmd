@@ -1,0 +1,133 @@
+---
+title: "0.4_review_conflicts_pt1"
+author: "Devi Veytia"
+date: "2024-03-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Set up -- run before anything else
+
+```{r set up libraries}
+## Load libraries
+library(dplyr)
+library(dbplyr)
+library(R.utils)
+library(RSQLite)
+library(ggplot2)
+
+# set up functions
+sourceFn <- dir(here::here("R"))
+for(i in 1:length(sourceFn)){
+  source(here::here("R", sourceFn[i]))
+}
+
+```
+
+```{r set the seed}
+addTaskCallback(function(...) {set.seed(123);TRUE})
+```
+
+## Download article answers
+
+```{r load in screening answers at title and abstract stage}
+
+# Load answers from training screening and all screening and combine
+train <- readxl::read_excel(here::here("data/derived-data/screen-train/ArticleAnswers_train_set1.xlsx"))
+all <- readxl::read_excel(here::here("data/derived-data/screen-all/ArticleAnswers_conflictsResolved_2024-03-27.xlsx"))
+df <- rbind(train, all)
+df <- df %>%
+  mutate(sysrev_id = as.numeric(`Article ID`),
+         include = as.logical(Include)) %>%
+  rename(title = Title) 
+
+
+
+## This code formats User answers to wide, but don't need this because I'm using the Article answers format
+# df_wide <- reshape2::dcast(formula = sysrev_id + title ~ `User Name`, value.var = 'Include',data = df)
+
+
+```
+
+```{r remove duplicates and load deduplicated data}
+## Remove duplicates
+#dups <- revtools::screen_duplicates(as.data.frame(df))
+df_unique <- readr::read_csv(here::here("data/derived-data/screen-all/ArticleAnswers_conflictsResolved_2024-03-27_deduplicated.csv"))
+df_unique$label <- NULL
+df_unique$matches <- NULL
+
+df_unique <- df_unique %>%
+  left_join(df %>% select(sysrev_id, `Exclusion criteria`), by = c("sysrev_id"))
+```
+
+```{r Write file on all the exclusions based on literature review}
+
+reviews <- df_unique %>%
+  filter(grepl("literature review", `Exclusion criteria`))
+nrow(reviews) # 30 reviews -- remove these from the dataframe of conflicts
+
+writexl::write_xlsx(reviews, here::here("data/derived-data/screen-all/ArticleAnswers_conflictsResolved_2024-03-27_literatureReviews.xlsx"))
+```
+
+```{r join with article metadata}
+p4_db <- RSQLite::dbConnect(RSQLite::SQLite(),
+                    here::here("data","raw-data","product4.sqlite"), 
+                                create=FALSE)
+screenRecs <- tbl(p4_db, "trainRecsSample") %>% collect()
+dbDisconnect(p4_db)
+
+
+df_unique <- fuzzyjoin::stringdist_full_join(df_unique, 
+                                      screenRecs %>% 
+                                        select(analysis_id, title, abstract),
+                                      by ="title", max_dist=2, ignore_case = TRUE)
+
+
+# Keep title from original metadata and format/clean data frame
+df_unique <- df_unique %>%
+  select(sysrev_id, analysis_id, include, title.y, abstract, `Exclusion criteria`) %>%
+  rename(title = title.y)  
+
+summary(df_unique)
+nrow(df_unique)
+
+```
+
+
+
+```{r summarise screening results}
+keyLabels <- c("Population","Intervention","Literature review","Outcome")
+keyLabelCounts <- rep(NA, length(keyLabels))
+
+for(l in 1:length(keyLabels)){
+  keyLabelCounts[l] <- sum(grepl(keyLabels[l], df_unique$`Exclusion criteria`, ignore.case = TRUE))
+}
+
+sumdf <- rbind(
+  data.frame(
+    statistic = "Inclusion",
+    label = c("Include","Exclude"),
+    counts = c(sum(df_unique$include), length(df_unique$include)-sum(df_unique$include))
+  ),
+  data.frame(
+    statistic = "Exclusion label",
+    label = keyLabels,
+    counts = keyLabelCounts
+  )
+)
+sumdf$label <- factor(sumdf$label, 
+                      levels = c("Include","Exclude",keyLabels))
+
+screeningSummary_ggp <- ggplot(sumdf, aes(x=label, y=counts, fill = label))+
+  geom_col()+
+  geom_text(aes(label = counts), vjust = -0.2)+
+  theme_bw()+
+  theme(
+    axis.text.x = element_text(angle = 45, vjust=1, hjust=1)
+  )
+screeningSummary_ggp
+```
+
