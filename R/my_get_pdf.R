@@ -34,12 +34,17 @@ my_get_pdf <- function(doi, path = ".", filename = "", overwrite = FALSE){
       rvest::html_elements("button") |> 
       rvest::html_attr("onclick")
     
+    if(length(pdf_link) == 0){
+      message("No PDF found.")
+      return(invisible(NULL))
+    }
+    
     
     ## Clean pdf link ----
     
     pdf_link <- gsub("location.href=", "", pdf_link)
     pdf_link <- gsub("^'|'$", "", pdf_link)
-    #pdf_link <- gsub("\\?download=true", "", pdf_link)
+    pdf_link <- gsub("\\?download=true", "", pdf_link) ## had this commented out before?
     pdf_link <- ifelse(startsWith(pdf_link,"/"), sub(".", "", pdf_link), pdf_link)
     
     
@@ -59,7 +64,10 @@ my_get_pdf <- function(doi, path = ".", filename = "", overwrite = FALSE){
     
     errorMessage <- try(curl::curl_download(pdf_link, file_path), silent=TRUE)
     
-    if(grepl("error", errorMessage, ignore.case = TRUE)){
+    if(length(grepl("error", errorMessage, ignore.case = TRUE))==0){
+      message("No PDF found.")
+      return(invisible(NULL))
+    }else if(grepl("error", errorMessage, ignore.case = TRUE)){
       message("No PDF found.")
       return(invisible(NULL))
     }else{

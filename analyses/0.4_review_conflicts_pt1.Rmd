@@ -52,6 +52,8 @@ df <- df %>%
 
 ```
 
+# Clean data and join with metadata
+
 ```{r remove duplicates and load deduplicated data}
 ## Remove duplicates
 #dups <- revtools::screen_duplicates(as.data.frame(df))
@@ -60,7 +62,7 @@ df_unique$label <- NULL
 df_unique$matches <- NULL
 
 df_unique <- df_unique %>%
-  left_join(df %>% select(sysrev_id, `Exclusion criteria`), by = c("sysrev_id"))
+  left_join(df %>% dplyr::select(sysrev_id, `Exclusion criteria`), by = c("sysrev_id"))
 ```
 
 ```{r Write file on all the exclusions based on literature review}
@@ -82,13 +84,13 @@ dbDisconnect(p4_db)
 
 df_unique <- fuzzyjoin::stringdist_full_join(df_unique, 
                                       screenRecs %>% 
-                                        select(analysis_id, title, abstract),
+                                        select(analysis_id, title, abstract, doi, year),
                                       by ="title", max_dist=2, ignore_case = TRUE)
 
 
 # Keep title from original metadata and format/clean data frame
 df_unique <- df_unique %>%
-  select(sysrev_id, analysis_id, include, title.y, abstract, `Exclusion criteria`) %>%
+  select(sysrev_id, analysis_id, include, title.y, abstract, `Exclusion criteria`, doi, year) %>%
   rename(title = title.y)  
 
 summary(df_unique)
@@ -130,4 +132,99 @@ screeningSummary_ggp <- ggplot(sumdf, aes(x=label, y=counts, fill = label))+
   )
 screeningSummary_ggp
 ```
+
+# Subset to just inclusions 
+
+```{r automatic full text extraction}
+
+# set scihub url to renviron 
+#usethis::edit_r_environ() 
+# opens .Renviron file where I add teh line of text: SCIHUB_URL = "https://sci-hub.se/"
+
+# Subset to just the relevant articles
+relevantArticles <- df_unique[df_unique$include,]
+dim(relevantArticles)
+
+# clean dois 
+dois <- relevantArticles$doi
+dois <- ifelse(is.na(dois), NA, gsub("https://doi.org/", "", dois))
+
+
+# set directory to place downloaded pdfs
+path_pdf = here::here("data/raw-data/full-texts")
+if(isFALSE(dir.exists(path_pdf))){
+  dir.create(path_pdf, showWarnings = FALSE, recursive = TRUE)
+}
+
+source(here::here("R/my_get_pdf.R"))
+
+## Create a dataframe of the ids, and whether or not a pdf was found
+doisFound <- data.frame(
+  doi = dois,
+  analysis_id = relevantArticles$analysis_id[1:length(dois)],
+  title = relevantArticles$title,
+  fullTextFound = logical(length(dois))
+)
+
+# download pdf if possible
+for (i in 1:length(dois)) { 
+  
+  if (length(dois[i]) == 1) {
+    if(is.na(dois[i])){
+      next
+    }
+    
+    # make filename
+    id = relevantArticles$analysis_id[i]
+    #auth = clean_text(substring(relevantArticles$author[i],1,10))
+    tit = clean_text(substring(relevantArticles$title[i], 1, 30))
+    yr = relevantArticles$year[i]
+    fn = paste(id, tit, yr, sep="_") #paste(id, auth, tit, yr, sep="_")
+    
+ 
+    
+    errorMessage = capture.output(my_get_pdf(doi=dois[i], path = path_pdf, filename = fn, overwrite=TRUE),
+                                  type = "message")
+    if(grepl("No PDF found", errorMessage)){
+      doisFound$fullTextFound[i] <- FALSE
+    }else{
+      doisFound$fullTextFound[i] <- TRUE
+    }
+    
+    Sys.sleep(sample(seq(0, 5, by = 0.01), 1))
+  }
+}
+
+
+## Write results of full text retreival
+write.csv(doisFound, file=here::here("data/raw-data/full-texts/results-scihub-full-text-retreival.csv"))
+```
+
+
+```{r write metadata to excel file}
+relevantArticles %>%
+  select(analysis_id, title, year, doi) %>%
+  writexl::write_xlsx(path = here::here("data/derived-data/screen-all/inclusions_abstract_metadata.xlsx"))
+
+```
+
+
+```{r write search file to search in WOS to download full texts}
+# Subset to just the relevant articles
+relevantArticles <- df_unique[df_unique$include,]
+dim(relevantArticles)
+
+# clean dois 
+dois <- relevantArticles$doi[!is.na(relevantArticles$doi)]
+dois <- gsub("https://doi.org/", "", dois)
+dois <- paste(dois, collapse=" OR ")
+titles <- paste(relevantArticles$title[is.na(relevantArticles$doi)], collapse=" OR ")
+
+sink(here::here("data/derived-data/screen-all/inclusions_abstract_screen_search_terms.txt"))
+cat(paste0("(DO = (", dois,")) OR (TI = (", titles, "))", collapse=""))
+sink()
+```
+
+
+
 
