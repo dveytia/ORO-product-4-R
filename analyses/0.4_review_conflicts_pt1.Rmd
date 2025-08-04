@@ -225,6 +225,31 @@ cat(paste0("(DO = (", dois,")) OR (TI = (", titles, "))", collapse=""))
 sink()
 ```
 
+```{r extract climate impact driver predictions for the relevant articles}
+relevantArticles <- readxl::read_xlsx(here::here("data/derived-data/screen-all/inclusions_abstract_metadata.xlsx"))
 
+cidPred <- read.csv(here::here("data/raw-data/coding-predictions/climate_threat_simplified_predictions.csv"))
+cidPred <- cidPred[,c(1, grep("mean", colnames(cidPred)))]
+colnames(cidPred) <- c("analysis_id","Temperature","Sea-level rise","Extreme weather")
+
+relevantArticlesCid <- relevantArticles %>%
+  left_join(cidPred, by="analysis_id")
+
+relevantArticlesCid %>%
+  summarise(
+    nTemp = sum(0.5 <= Temperature),
+    nSLR = sum(0.5 <= `Sea-level rise`),
+    nExtreme = sum(0.5 <= `Extreme weather`),
+  )
+# # A tibble: 1 × 3
+#   nTemp  nSLR nExtreme
+#   <int> <int>    <int>
+# 1     1    25       24
+
+## write results
+relevantArticlesCid %>%
+  writexl::write_xlsx(path = here::here("data/derived-data/screen-all/inclusions_abstract_metadata_ClimateImpactDriver.xlsx"))
+
+```
 
 
