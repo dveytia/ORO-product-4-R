@@ -9,22 +9,1057 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+```{r set up libraries}
+## Load libraries
+library(dplyr)
+library(dbplyr)
+library(R.utils)
+library(RSQLite)
+library(ggplot2)
+library(tidyr)
+library(stringr)
+library(purrr)
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+# set up functions
+sourceFn <- dir(here::here("R"))
+for(i in 1:length(sourceFn)){
+  source(here::here("R", sourceFn[i]))
+}
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
 
-```{r cars}
-summary(cars)
+# set up aesthetics
+oroTypeAes <- data.frame(
+  levels = c("Institutional", "Fisheries management",
+             "Economic","Socio-behavioural",
+             "Fishing technologies", "Disaster response technologies",
+             "Built infrastructure", "Nature-based"
+             ),
+  branch = c(rep("Socio-institutional", 4),
+             rep("Technology", 2),
+             rep("Infrastructure", 2)),
+  order = 1:8,
+  col = c(
+  # Socio-institutional (blue shades)
+  "#1f77b4",  # Institutional
+  "#4e91c0",  # Fisheries management
+  "#76add0",  # Economic
+  "#a6c8e2",  # Socio-behavioural
+
+  # Technology (green shades)
+  "#2ca02c",  # Fishing technologies
+  "#71c671",  # Disaster response technologies
+
+  # Infrastructure (orange shades)
+  "#ff7f0e",  # Built infrastructure
+  "#fcb87c"   # Nature-based
+  )
+)
+
+studyMethodAes <- data.frame(
+  levels = c(
+    "Interview", "Survey","Workshop",
+    "Ecological observation","Experiment",
+    "Quantitative analysis",
+    "Qualitative analysis","Case study/anecdotal"
+             ),
+  branch = c(rep("Empirical - social", 3),
+             rep("Empirical - other", 2),
+             "Quantitative analysis",
+             rep("Qualitative analysis",2)
+            ),
+  order = 1:8,
+  col = c(
+  # Empirical - social (purples)
+  "#9467bd",  # Interview
+  "#a87dc3",  # Survey
+  "#c5a0d4",  # Workshop
+
+  # Empirical - other (greens)
+  "#2ca02c",  # Ecological observation
+  "#7ecf7e",  # Experiment
+
+  # Quantitative analysis (blue)
+  "#1f77b4",  # Quantitative analysis
+
+  # Qualitative analysis (oranges)
+  "#ff7f0e",  # Qualitative analysis
+  "#fcb87c"   # Case study/anecdotal
+)
+)
+
+cidAes <- data.frame(
+  levels = c(
+    "Storms/extreme weather", "Sea level rise",
+    "Ocean warming", "Marine heatwaves",
+    "Ocean acidification",
+    "Climate change in general"
+             ),
+  branch = c(rep("Coastal hazards", 2),
+             rep("Warming", 2),
+             "Ocean acidification",
+             "Climate change"
+            ),
+  order = 1:6,
+  col = c(
+  # Coastal hazards (teal/cyan shades)
+  "#17becf",  # Storms/extreme weather
+  "#9bdde2",  # Sea level rise
+
+  # Warming (red-orange shades)
+  "#d62728",  # Ocean warming
+  "#ff9896",  # Marine heatwaves
+
+  # Ocean acidification (purple)
+  "#9467bd",  # Ocean acidification
+
+  # Climate change (neutral gray)
+  "#eab676"   # Climate change in general
+)
+)
+
+
 ```
 
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r set the seed}
+addTaskCallback(function(...) {set.seed(123);TRUE})
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r load relevant articles}
+# connect to database
+p4_db <- RSQLite::dbConnect(RSQLite::SQLite(),
+                    here::here("data","raw-data","product4.sqlite"), 
+                                create=FALSE)
+
+# Collect table
+relevantdedups <- tbl(p4_db, "relevantdedups_p4") %>%
+  collect()
+
+# Disconnect the database
+dbDisconnect(p4_db)
+
+```
+
+```{r load in coding results}
+codedVars <- readxl::read_excel(
+  here::here("outputs/coding-answers-human/testList_answers_df_v9_human.xlsx")
+)
+
+
+
+studyResults <- readxl::read_excel(
+  here::here("outputs/coding-answers-human/testList_answers_df_studyResults_v9_human.xlsx")
+)
+
+## Regroup labels and keep based on f1 scores}
+## Keep: include, procedural_equity, spatial_scale, all the interventions, climatic_impact_driver, study_method, governance_body, rules_of_law
+# Remove: time_scale 
+
+codedVars <- codedVars %>% select(-c(contains("time")))
+
+# for climatic impact driver, remove general when other more specific ones are present
+
+codedVars <- codedVars %>%
+  mutate(
+    climatic_impact_driver = climatic_impact_driver %>%
+      # Remove brackets and split
+      str_remove_all("^\\[|\\]$") %>%
+      str_split(",\\s*") %>%
+      map(~ .x %>%
+            str_remove_all("^['\"]|['\"]$") %>%        # remove surrounding quotes
+            str_trim() %>%
+            discard(~ .x == "Climate change in general" && length(.x) > 1) %>%  # remove only if others are present
+            unique()
+      ) %>%
+      map_chr(~ paste0("['", paste(.x, collapse = "', '"), "']"))
+  )
+
+
+
+# So suggest to keep all study results, but because negative has lower recall, do supplementary sensitivity analysis where I re-group to just Positive vs other. 
+
+# results files in outputs: testList_f1_scores_v9.xlsx,testList_studyResults_f1_scores_v9.xlsx
+
+studyResults <- studyResults %>%
+  mutate(
+    result_effect_regrouped = case_when(
+      result_effect == "Positive" ~ "Adaptive",
+      is.na(result_effect) ~ NA,
+      TRUE ~ "Other"
+    )
+  )
+
+
+```
+
+
+
+Figure summary
+- infographic with barplot showing # papers for each ORO type, stacked color = continent (weighted)
+- climatic impact driver ~ ? maybe just a barplot?
+- oro type ~ methods
+- outcome type (social, economic, management) ~ qualitative outcome 
+- scatter plot with time scale vs spatial scale, with point size ~ # papers, color ~ oro
+
+spider plot synthesis
+Spider plot with the following axes (each axis is a weighted composite metric of the following variables:
+- Enabling conditions: Procedural, Governance bodies, Rules of Law
+- Scale: Time, Space
+- Outcomes: maybe relative # positive outcomes for each outcome type?
+
+
+```{r formatting functions}
+
+expand_labels <- function(df, id_col, list_col) {
+  id_col_quo <- enquo(id_col)
+  list_col_quo <- enquo(list_col)
+  
+  df %>%
+    mutate(
+      parsed_labels = str_replace_all(!!list_col_quo, "^NA$|^'NA'$|^\"NA\"$", "[]"),
+      parsed_labels = str_replace_all(parsed_labels, "\\[|\\]", ""),
+      parsed_labels = str_split(parsed_labels, ",\\s*"),
+      parsed_labels = map(parsed_labels, ~ unique(str_trim(str_replace_all(.x, "^['\"]|['\"]$", ""))))
+    ) %>%
+    unnest(parsed_labels) %>%
+    filter(!is.na(parsed_labels), parsed_labels != "")
+}
+
+
+
+
+expand_labels_with_weight <- function(df, id_col, list_col) {
+  id_col_quo <- enquo(id_col)
+  list_col_quo <- enquo(list_col)
+  
+  df %>%
+    mutate(
+      parsed_labels = str_replace_all(!!list_col_quo, "^NA$|^'NA'$|^\"NA\"$", "[]"),
+      parsed_labels = str_replace_all(parsed_labels, "\\[|\\]", ""),
+      parsed_labels = str_split(parsed_labels, ",\\s*"),
+      parsed_labels = map(parsed_labels, ~ unique(str_trim(str_replace_all(.x, "^['\"]|['\"]$", ""))))
+    ) %>%
+    unnest(parsed_labels) %>%
+    filter(!is.na(parsed_labels), parsed_labels != "") %>%
+    distinct(!!id_col_quo, parsed_labels) %>%
+    group_by(!!id_col_quo) %>%
+    mutate(weight = 1 / n()) %>%
+    ungroup() %>%
+    rename(label = parsed_labels)
+}
+
+
+join_oro_with_label <- function(oro_df, codedVars, label_col, label_levels = NULL, id_col = id) {
+  # Convert inputs to symbols and strings
+  id_col_quo <- rlang::enquo(id_col)
+  label_col_quo <- rlang::enquo(label_col)
+  id_col_str <- rlang::as_name(id_col_quo)
+  
+  # Expand labels with weight
+  label_df <- expand_labels_with_weight(codedVars, !!id_col_quo, !!label_col_quo)
+  
+  # Ensure the ID column exists in both data frames
+  if (!(id_col_str %in% colnames(oro_df))) {
+    stop(glue::glue("Column '{id_col_str}' not found in oro_df"))
+  }
+  if (!(id_col_str %in% colnames(label_df))) {
+    stop(glue::glue("Column '{id_col_str}' not found in label_df (after label expansion)"))
+  }
+
+  # Merge and process
+  type_label_joined <- merge(
+    oro_df, label_df, by = id_col_str, all = TRUE,
+    suffixes = c("", "_label")
+  ) %>%
+    mutate(weight = oro_weight * weight) %>%
+    group_by(oro_type, label) %>%
+    summarise(
+      weightedSum = sum(weight, na.rm = TRUE),
+      oro_weight = sum(oro_weight, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    replace_na(list(label = "None identified")) %>%
+    mutate(
+      weightedSum = ifelse(is.na(weightedSum), oro_weight, weightedSum),
+      oro_type = factor(oro_type, levels = oroTypeAes$levels)
+    )
+  
+  # Optional: reorder factor levels
+  if (!is.null(label_levels)) {
+    
+    if(sum(continent_oro$label == "None identified", na.rm=T) > 0){
+      label_levels = c(label_levels, "None identified")
+    }
+    
+    type_label_joined <- type_label_joined %>%
+      mutate(label = factor(label, levels = label_levels))
+  }
+  
+  return(type_label_joined)
+}
+
+
+
+
+join_oro_with_multilabels <- function(
+  oro_df,
+  codedVars,
+  label_cols,               # character vector: c("continent", "sector", ...)
+  label_levels_list = NULL, # named list: list(continent = c(...), sector = c(...))
+  id_col = "id"
+) {
+  id_col_sym <- rlang::sym(id_col)
+
+  # Step 1: Expand and collect all label information
+  all_labels <- purrr::map(label_cols, function(colname) {
+    col_sym <- rlang::sym(colname)
+    
+    label_df <- expand_labels_with_weight(codedVars, !!id_col_sym, !!col_sym)
+    # label_df$label_col <- colname  # tag the source column
+    
+    
+    # Optional: apply factor levels
+    if (!is.null(label_levels_list) && colname %in% names(label_levels_list)) {
+      levels_this_col <- label_levels_list[[colname]]
+      # if ("None identified" %in% label_df$label) {
+      levels_this_col <- c(levels_this_col, "None identified")
+      # }
+      label_df <- label_df %>%
+        mutate(label = factor(label, levels = levels_this_col))
+    }
+    
+    colnames(label_df) <- c("id",colname, paste(colname,"weight", sep="_"))
+    
+    return(label_df)
+  })
+  all_labels <- purrr::reduce(all_labels, full_join, by = "id")%>%
+    mutate(across(
+      where(is.character),
+      ~replace_na(.x, "None identified")
+    )) %>%
+    mutate(across(
+      where(is.numeric),
+      ~replace_na(.x, 1)
+    ))
+    
+
+  # Step 2: Merge with oro and compute weighted sums
+  group_cols_sym = c("oro_type", label_cols)
+  
+  joined <- merge(
+    oro_df, all_labels, by = id_col, all = TRUE
+  ) %>%
+    mutate(
+      oro_type = factor(
+        oro_type, 
+        levels = oroTypeAes$levels
+      )
+    ) %>%
+    rowwise() %>%
+    mutate(weight = prod(c_across(contains("weight")))) %>%
+    ungroup() %>%
+    group_by(across(all_of(group_cols_sym))) %>%
+    summarise(weightedSum = sum(weight, na.rm = TRUE), count = n_distinct(id, na.rm=T), .groups = "drop")%>%
+    mutate(across(
+      where(is.factor),
+      ~replace_na(.x, "None identified")
+    )) 
+  
+
+  return(joined)
+}
+
+
+
+
+
+join_oro_with_multilabels_long <- function(
+  oro_df,
+  codedVars,
+  label_cols,               # character vector: c("continent", "sector", ...)
+  label_levels_list = NULL, # named list: list(continent = c(...), sector = c(...))
+  id_col = "id"
+) {
+  id_col_sym <- rlang::sym(id_col)
+
+  # Step 1: Expand and collect all label information
+  all_labels <- purrr::map(label_cols, function(colname) {
+    col_sym <- rlang::sym(colname)
+    
+    label_df <- expand_labels_with_weight(codedVars, !!id_col_sym, !!col_sym)
+    # label_df$label_col <- colname  # tag the source column
+    
+    
+    # Optional: apply factor levels
+    if (!is.null(label_levels_list) && colname %in% names(label_levels_list)) {
+      levels_this_col <- label_levels_list[[colname]]
+      # if ("None identified" %in% label_df$label) {
+      levels_this_col <- c(levels_this_col, "None identified")
+      # }
+      label_df <- label_df %>%
+        mutate(label = factor(label, levels = levels_this_col))
+    }
+    
+    colnames(label_df) <- c("id",colname, paste(colname,"weight", sep="_"))
+    
+    return(label_df)
+  })
+  all_labels <- purrr::reduce(all_labels, full_join, by = "id")%>%
+    mutate(across(
+      where(is.character),
+      ~replace_na(.x, "None identified")
+    )) %>%
+    mutate(across(
+      where(is.numeric),
+      ~replace_na(.x, 1)
+    ))
+    
+
+  # Step 2: Merge with oro and compute weighted sums
+  group_cols_sym = c("oro_type", label_cols)
+  
+  joined <- merge(
+    oro_df, all_labels, by = id_col, all = TRUE
+  ) %>%
+    mutate(
+      oro_type = factor(
+        oro_type, 
+        levels = oroTypeAes$levels
+      )
+    ) %>%
+    distinct(across(all_of(c("id", group_cols_sym)))) %>%
+    mutate(across(
+      where(is.factor),
+      ~replace_na(.x, "None identified")
+    )) 
+  
+  return(joined)
+}
+
+
+
+
+
+```
+
+```{r expand oro type and calculate weights}
+institutional <- expand_labels_with_weight(codedVars, id, intervention_institutional) %>%
+  mutate(oro_branch = "Institutional") %>%
+  rename(oro_type = label, oro_weight = weight)
+
+technology <- expand_labels_with_weight(codedVars, id, intervention_technology) %>%
+  mutate(oro_branch = "Technology") %>%
+  rename(oro_type = label, oro_weight = weight)
+
+infrastructure <- expand_labels_with_weight(codedVars, id, intervention_infrastructure) %>%
+  mutate(oro_branch = "Infrastructure") %>%
+  rename(oro_type = label, oro_weight = weight)
+
+oro_df <- institutional %>%
+  bind_rows(technology) %>%
+  bind_rows(infrastructure) %>%
+  mutate(oro_weight = 1 / n_distinct(id)) %>%
+  ungroup() 
+
+
+
+```
+
+
+Make this more visually appealing -- infographic like?
+```{r typology}
+oro_ggp <- oro_df %>%
+  group_by(oro_type)%>%
+  summarise(
+    weightedSum = sum(oro_weight, na.rm=T)
+  ) %>%
+  ungroup()%>%
+  mutate(
+    oro_type = factor(
+      oro_type,
+      levels = oroTypeAes$levels
+    )
+  ) %>%
+  ggplot()+
+  geom_col(aes(x=oro_type, y=weightedSum, fill = oro_type)) +
+  scale_fill_manual(
+    values = oroTypeAes$col,
+    breaks = oroTypeAes$levels,
+    guide="none"
+  )+
+  labs(
+    x = "ORO type",
+    y="N articles (weighted)"
+  )+
+  theme_minimal(base_size = 12)+
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1),
+    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
+  )
+oro_ggp
+
+
+ggsave(
+  here::here("figures/supplemental/oro_barplot.pdf"),
+  plot = oro_ggp,
+  width = 5, height=4.5
+)
+```
+
+
+```{r continent barplot}
+
+continent_oro <- join_oro_with_label(oro_df, codedVars, continent, 
+                                     c(
+                                       "Africa","Asia", "Europe",
+                                       "North America","South America",
+                                       "Oceania"
+                                     )
+                                     )
+level_pal = RColorBrewer::brewer.pal(n = length(levels(continent_oro$label)),
+                                     name = "Accent"
+                                    )
+if("None identified" %in% levels(continent_oro$label)){
+  level_pal <- level_pal[-1]
+  level_pal <- c(level_pal, "darkgrey")
+}
+
+
+continent_ggp <- ggplot(data = continent_oro, aes(x=oro_type, y=weightedSum, fill = label))+
+  geom_col(position="stack")+
+  geom_vline(
+    data = data.frame(
+      xintercepts = c(4.5,6.5)
+    ),
+    aes(xintercept = xintercepts),
+    col="black", linewidth = 0.8,
+    inherit.aes = FALSE
+  )+
+  labs(
+    x = "ORO type",
+    y="N articles (weighted)",
+    fill = "Continent"
+  )+
+  scale_fill_manual(
+    values = level_pal,
+    breaks = levels(continent_oro$label)
+  )+
+  theme_minimal(base_size = 12)+
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1),
+    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
+  )
+
+continent_ggp
+
+ggsave(
+  here::here("figures/supplemental/oro_type_vs_continet_barplot.pdf"),
+  plot = continent_ggp,
+  width = 7, height=5
+)
+
+```
+
+
+```{r climate impact drivers barplot}
+cids <- expand_labels_with_weight(codedVars, id, climatic_impact_driver) %>%
+  group_by(label) %>%
+  summarise(
+    weightedSum = sum(weight)
+  ) %>%
+  mutate(
+    label = factor(
+      label, levels = cidAes$levels
+    )
+  )
+
+cid_ggp <- ggplot(cids, aes(x=label, y=weightedSum, fill = label))+
+  geom_col()+
+  labs(
+    x = "Climatic impact driver",
+    y="N articles (weighted)"
+  )+
+  scale_fill_manual(
+    values = cidAes$col,
+    breaks = cidAes$levels
+  )+
+  theme_minimal(base_size = 12)+
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1),
+    plot.margin = unit(c(0.2, 0.5, 1, 1), units = "cm")
+  )
+
+cid_ggp
+
+ggsave(
+  here::here("figures/supplemental/climatic_impact_driver_barplot.pdf"),
+  plot = cid_ggp,
+  width = 6, height=5
+)
+
+
+```
+
+
+```{r cid ~ continent}
+oro_cont_cid <- join_oro_with_multilabels(
+  oro_df = oro_df,
+  codedVars = codedVars,
+  label_cols = c("continent", "climatic_impact_driver"),
+  label_levels_list = list(
+    continent = c("Africa","Asia", "Europe",
+                  "North America","South America",
+                  "Oceania"),
+    climatic_impact_driver = cidAes$levels
+  ),
+  id_col = "id"
+)
+
+# Filter out unidentified continents
+oro_cont_cid <- oro_cont_cid %>%
+  filter(continent != "None identified") %>%
+  mutate(continent = droplevels(continent))
+
+
+cid_continent_ggp <- ggplot()+
+  geom_col(data = oro_cont_cid , aes(x=climatic_impact_driver, y= weightedSum, fill = oro_type))+
+  facet_wrap(vars(continent), ncol = 2, scales="free_y")+
+  scale_fill_manual(
+    values = oroTypeAes$col,
+    breaks = oroTypeAes$levels
+  )+
+  geom_vline(
+    data = data.frame(
+      xintercepts = c(2.5,4.5,5.5)
+    ),
+    aes(xintercept = xintercepts),
+    col="black", linewidth = 0.8
+  )+
+  geom_text(
+    data = data.frame(
+      x = c(1.5, 3.5,5,6),
+      label = c("Coastal hazards","Warming","OA","General")
+    ),
+    aes(x=x, label=label, y=Inf),
+    hjust=0.5, vjust = 1, size=3
+  )+
+  scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.25)))+
+  
+  labs(
+    x = "Climatic impact driver",
+    y="N articles (weighted)",
+    fill = "ORO type"
+  )+
+  theme_bw(base_size = 11)+
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1),
+    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
+  )
+
+cid_continent_ggp
+
+ggsave(
+  here::here("figures/supplemental/oro_continent_cid_barplot.pdf"),
+  plot = cid_continent_ggp,
+  width = 10, height=6
+)
+
+```
+
+```{r oro type ~ methods}
+
+type_method_joined <- join_oro_with_label(oro_df, codedVars, study_method, 
+                                     studyMethodAes$levels
+                                     )%>%
+  rename(study_method = label)
+
+
+method_pal <- c(studyMethodAes$col, "grey")
+
+
+method_ggp <- ggplot(type_method_joined, aes(x=oro_type, y=weightedSum, fill = study_method))+
+  geom_col(position="stack")+
+  labs(
+    x = "ORO type",
+    y="N articles (weighted)",
+    fill = "Study\nMethod"
+  )+
+  scale_fill_manual(
+    values = method_pal,
+    breaks = levels(type_method_joined$study_method)
+  )+
+  theme_minimal(base_size = 12)+
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1),
+    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
+  )
+
+method_ggp
+
+ggsave(
+  here::here("figures/supplemental/oro_type_vs_method_barplot.pdf"),
+  plot = method_ggp,
+  width = 7, height=5
+)
+```
+
+
+bar plot with # papers vs spatial scale, fill = oro
+```{r spatial scale ~ oro}
+type_spatial_scale_joined <- join_oro_with_label(
+  oro_df, 
+  codedVars, 
+  spatial_scale, 
+  c("Local","National","Regional","Global","None")
+  ) %>%
+  filter(label != "None") %>%
+  mutate(label = droplevels(label))
+
+type_spatial_scale_joined_totals <- type_spatial_scale_joined %>%
+  group_by(label) %>%
+  summarise(
+    weightedSumTotal = sum(weightedSum, na.rm = T)
+  )
+
+type_spatial_scale_joined <- type_spatial_scale_joined %>%
+  left_join(type_spatial_scale_joined_totals, by = "label") %>%
+  mutate(
+    Proportion = weightedSum/weightedSumTotal
+  ) %>%
+  select(-weightedSumTotal)
+
+type_spatial_scale_joined <- reshape2::melt(type_spatial_scale_joined, 
+                                  measure.vars = c("weightedSum","Proportion"),
+                                  value.name = "Value",
+                                  variable.name = "Metric") %>%
+  mutate(
+    Metric = factor(Metric, levels = c("weightedSum","Proportion"),
+                    labels = c("N articles (weighted)", "Proportion"))
+  )
+
+
+spatial_scale_ggp <- ggplot(type_spatial_scale_joined, aes(x=label, y=Value, fill = oro_type))+
+  facet_wrap(vars(Metric), scales = "free_y", ncol=1)+
+  geom_col(position="stack")+
+  labs(
+    x = "Spatial scale",
+    y="Value",
+    fill = "ORO type"
+  )+
+  scale_fill_manual(
+    values = oroTypeAes$col,
+    breaks = oroTypeAes$levels
+  )+
+  theme_bw(base_size = 12)+
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1),
+    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
+  )
+
+spatial_scale_ggp
+
+ggsave(
+  here::here("figures/supplemental/spatial_scale_vs_oro_barplot.pdf"),
+  plot = spatial_scale_ggp,
+  width = 7, height=5
+)
+
+```
+
+
+
+```{r outcome type (social, economic, management) ~ qualitative outcome}
+studyResults <- studyResults %>%
+  group_by(id) %>%
+  mutate(
+    outcome_id = row_number()
+  )%>%
+  rowwise() %>%
+  mutate(
+    article_outcome_id =  paste(id, outcome_id, sep="_")
+  )%>%
+  ungroup()
+head(studyResults)
+
+outcomes <- expand_labels_with_weight(studyResults, article_outcome_id, result_type) %>%
+  rename(outcome_type = label, outcome_type_weight = weight) %>%
+  left_join(studyResults %>% select(id, article_outcome_id, data_type, result_effect), by = "article_outcome_id")
+
+
+
+type_outcome_joined <- merge(oro_df, outcomes, by = "id", all = TRUE) %>%
+  mutate(weight = oro_weight*outcome_type_weight) %>%
+  group_by(oro_type, outcome_type, data_type, result_effect) %>%
+  summarise(
+    weightedSum = sum(weight),
+    oro_weight = sum(oro_weight)
+  ) %>%
+  ungroup() %>%
+  replace_na(list(outcome_type = "None", data_type = "None", result_effect = "None")) %>%
+  mutate(
+    weightedSum = ifelse(is.na(weightedSum), oro_weight, weightedSum),
+    oro_type = factor(
+      oro_type,
+      levels = c("Institutional","Fisheries management","Economic","Socio-behavioural",
+                 "Disaster response technologies","Fishing technologies",
+                 "Hard infrastructure","Soft infrastructure") # CHANGE THIS
+    ),
+    outcome_type = factor(
+      outcome_type,
+      levels = c("Economic","Social","Ecological","None"), # CHANGE THIS
+      labels = c("Economic","Social","Ecological","Outcome\nnot identified")
+    ),
+    data_type = factor(
+      data_type,
+      levels = c("Quantitative","Qualitative","None"), # CHANGE THIS
+      labels = c("Quantitative","Qualitative","Data type\nnot identified")
+    ),
+    result_effect = factor(
+      result_effect,
+      levels = c("Positive","Negative","None"), # CHANGE THIS
+      labels = c("Positive","Negative","Effect\nnot identified")
+    )
+    ) 
+
+
+outcome_pal <- RColorBrewer::brewer.pal(length(levels(type_outcome_joined$outcome_type))-1,"Dark2")
+outcome_pal <- c(outcome_pal, "grey")
+
+#oro_type, outcome_type, data_type, result_effect
+outcome_ggp <- ggplot(type_outcome_joined, aes(x=oro_type, y=weightedSum, fill = outcome_type))+
+  facet_grid(result_effect~data_type)+
+  geom_col(position="stack")+
+  labs(
+    x = "ORO type",
+    y="N articles (weighted)",
+    fill = "Outcome type"
+  )+
+  scale_fill_manual(
+    values = outcome_pal,
+    breaks = levels(type_outcome_joined$outcome_type)
+  )+
+  theme_minimal(base_size = 10)+
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1),
+    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
+  )
+
+outcome_ggp
+
+ggsave(
+  here::here("figures/supplemental/outcome_types_barplot.pdf"),
+  plot = outcome_ggp,
+  width = 7, height=6
+)
+
+```
+
+Model is biased to pick up more positive effects, so not sure how good the finding is that there are less negative...
+
+Instead, focus on predictors of positive outcomes.
+
+- Of the positive effects, show how many are qualitative vs quantitative by oro type
+
+- model predicting positive effect predictors: continent, oro type, data_type, procedural_equity, governance, spatial_scale (dont fit binary for mixed effects because these could cancel out...)
+
+```{r model predictors of positive effects}
+
+studyResults_bin <- expand_labels(studyResults,id_col = id, list_col = result_type) %>%
+  select(id, parsed_labels, result_effect_regrouped)%>%
+  rename(result_type = parsed_labels, adaptive = result_effect_regrouped) %>%
+  group_by(id, result_type, adaptive)%>%
+  mutate(
+    adaptive = factor(
+      adaptive,
+      levels = c("Other","Adaptive") # success is the second level for binomial
+    )
+  )
+  # summarise(
+  #   count = n()
+  # )%>%
+  # pivot_wider(
+  #   names_from = result_effect_regrouped,
+  #   values_from = count
+  # )
+
+
+result_model_df <- join_oro_with_multilabels_long(
+  oro_df = oro_df,
+  codedVars = codedVars,
+  label_cols = c("continent", "climatic_impact_driver",
+                 "spatial_scale","procedural_equity","governance_body",
+                 "rules_of_law"),
+  label_levels_list = list(
+    continent = c("Africa","Asia", "Europe",
+                  "North America","South America",
+                  "Oceania"),
+    climatic_impact_driver = cidAes$levels,
+    spatial_scale = c("Local","National","Regional","Global","None"),
+    procedural_equity = c("TRUE","FALSE"),
+    governance_body = c("Community-based","National government",
+                        "Regional (e.g. RFMOs)","International",
+                        "Private organizations/companies"),
+    rules_of_law = c("Law (binding)","Non-binding")
+    
+  ),
+  id_col = "id"
+) %>%
+  full_join(
+    studyResults_bin,
+    by="id",
+    relationship = "many-to-many"
+  ) %>%
+  replace_na(list(adaptive = "Adaptive"))%>%
+  mutate(across(
+      where(is.factor),
+      ~droplevels(.x)
+    ))
+
+summary(result_model_df)
+
+## Do chi sq test on candidate predictors
+categorical_vars <- names(result_model_df)[!names(result_model_df) %in% c("id", "result_type", "adaptive")]
+
+
+chisq_results <- lapply(categorical_vars, function(var) {
+  tbl <- table(result_model_df[[var]], result_model_df$adaptive)
+  tbl <- tbl[rowSums(tbl, na.rm=T)>0,]
+  test <- chisq.test(tbl)
+  list(variable = var, p_value = test$p.value)
+})
+
+# Convert to data frame and sort
+chisq_df <- do.call(rbind, lapply(chisq_results, as.data.frame))
+chisq_df[order(chisq_df$p_value), ]
+
+
+
+# Fit logistic model with all predictors
+glm_results <- lapply(categorical_vars, function(var) {
+  var_sym <-rlang::sym(var)
+  tmpDat <- result_model_df[,c("adaptive", var)] %>%
+    filter(!grepl("None", !!var_sym))
+  glm_fit <- glm(adaptive ~ ., 
+                    data = tmpDat,
+                   family = binomial)
+  glm_summary <- summary(glm_fit)
+  glm_summary <- as.list(glm_summary)
+  glm_summary$variable = var
+  glm_summary$fit <- glm_fit
+  
+  totals <- tmpDat %>%
+    group_by(!!var_sym) %>%
+    summarise(
+      total = n()
+    ) %>%
+    ungroup()
+  
+  varTitle <- gsub("_"," ", var)
+  varTitle <- stringr::str_to_sentence(varTitle)
+  
+  pvals <- glm_summary$coefficients %>% 
+    as.data.frame() %>%
+    tibble::rownames_to_column(var) %>%
+    mutate(
+      estimate = scales::number(Estimate, scale_cut = scales::cut_short_scale()),
+      pval_label = ufs::formatPvalue(`Pr(>|z|)`),
+      # !!var_sym = case_when(
+      #   !!var_sym == "(Intercept)" ~ levels(tmpDat[,var])[1],
+      #   TRUE ~ gsub(var,"",!!var_sym)
+      # )
+    ) %>%
+    mutate(
+      pval_label = ifelse(
+        `Pr(>|z|)` <= 0.05, paste("\u03b2 =",estimate,"\n",pval_label,"*", sep=""), pval_label
+      ),
+      pval_col = case_when(
+        `Pr(>|z|)` <= 0.05 & 0 < Estimate ~ "darkgreen", 
+        `Pr(>|z|)` <= 0.05 & Estimate < 0 ~"red", 
+        TRUE ~ "darkgrey"
+      )
+    )
+  pvals[,var] <- gsub(var,"",pvals[,var])
+  pvals[,var] <- ifelse(pvals[,var] == "(Intercept)", levels(tmpDat[,var])[1],
+                        pvals[,var])
+  
+  glm_ggp <- tmpDat %>%
+    filter(adaptive == "Adaptive") %>%
+    group_by(!!var_sym) %>%
+    summarise(
+      n_adapt = n()
+    ) %>%
+    left_join(totals, by = var) %>%
+    mutate(
+      prop_adapt = n_adapt/total
+    ) %>%
+    ggplot(aes(x=!!var_sym, y=prop_adapt*100))+
+    geom_col()+
+    geom_text(
+      data = pvals,
+      aes(x=!!var_sym,label = pval_label, col = pval_col), y=Inf, hjust = 1, vjust=1,
+      size=2.75, angle=45
+    )+
+    scale_color_identity()+
+    geom_hline(yintercept = 50, col="red", linewidth = 0.8)+
+    scale_x_discrete(
+      labels = function(x){
+        str_wrap(gsub("/"," / ", x), width = 20)
+        }
+    )+
+    scale_y_continuous(
+      limits = c(0, NA), expand = expansion(mult = c(0,0.4))
+    )+
+    labs(
+      x = varTitle,
+      y="Adaptive result (%)",
+    )+
+    coord_cartesian(clip="off")+
+    theme_minimal(base_size = 10)+
+    theme(
+      axis.text.x = element_text(angle = 45, hjust=1)
+    )
+  
+  glm_ggp
+      
+  glm_summary$glm_ggp <- glm_ggp
+  
+  return(glm_summary)
+})
+
+
+# plot all ggplots
+glm_ggp_list <- lapply(glm_results, function(x) x$glm_ggp)
+
+
+require(patchwork)
+
+# Combine using patchwork
+combined_patchwork <- wrap_plots(glm_ggp_list, ncol = 2) + 
+  plot_annotation(tag_levels = 'a')
+
+ggsave(here::here("figures/supplemental/adaptation_predictors_glmPlot.pdf"),
+       combined_patchwork, width = 7, height = 15)
+
+
+
+
+# fit all together -- not too helpful...
+adaptive_glm <- glm(adaptive ~ ., 
+                    data = result_model_df %>% 
+                      select(-id, -result_type, -continent,
+                             -climatic_impact_driver),
+                   family = binomial)
+
+glm_summary <- summary(adaptive_glm)
+glm_summary$aic
+glm_summary$coefficients
+```
+
+
+
+
+
+
+
+
+
+
