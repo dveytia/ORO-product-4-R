@@ -704,7 +704,9 @@ ggsave(
 
 
 bar plot with # papers vs spatial scale, fill = oro
-```{r spatial scale ~ oro}
+```{r governance body ~ spatial scale ~ oro type}
+
+## Spatial scale panels
 type_spatial_scale_joined <- join_oro_with_label(
   oro_df, 
   codedVars, 
@@ -757,14 +759,159 @@ spatial_scale_ggp <- ggplot(type_spatial_scale_joined, aes(x=label, y=Value, fil
 
 spatial_scale_ggp
 
+
+
+
+## Governance panels
+type_governance_joined <- join_oro_with_label(
+  oro_df, 
+  codedVars, 
+  governance_body, 
+  c("Community-based","National government",
+                        "Regional (e.g. RFMOs)","International",
+                        "Private organizations/companies")
+  ) %>%
+  filter(label != "None") %>%
+  mutate(label = droplevels(label))
+
+type_governance_joined_totals <- type_governance_joined %>%
+  group_by(label) %>%
+  summarise(
+    weightedSumTotal = sum(weightedSum, na.rm = T)
+  )
+
+type_governance_joined <- type_governance_joined %>%
+  left_join(type_governance_joined_totals, by = "label") %>%
+  mutate(
+    Proportion = weightedSum/weightedSumTotal
+  ) %>%
+  dplyr::select(-weightedSumTotal)
+
+type_governance_joined <- reshape2::melt(type_governance_joined, 
+                                  measure.vars = c("weightedSum","Proportion"),
+                                  value.name = "Value",
+                                  variable.name = "Metric") %>%
+  mutate(
+    Metric = factor(Metric, levels = c("weightedSum","Proportion"),
+                    labels = c("N articles (weighted)", "Proportion"))
+  )
+
+
+governance_ggp <- ggplot(type_governance_joined, aes(x=label, y=Value, fill = oro_type))+
+  facet_wrap(vars(Metric), scales = "free_y", ncol=1)+
+  geom_col(position="stack")+
+  labs(
+    x = "Governance body",
+    y="Value",
+    fill = "ORO type"
+  )+
+  scale_fill_manual(
+    values = oroTypeAes$col,
+    breaks = oroTypeAes$levels
+  )+
+  theme_bw(base_size = 12)+
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1),
+    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
+  )
+
+governance_ggp
+
+
+
+
+require(patchwork)
+
+# Combine using patchwork
+plotList = list(
+  spatial_scale_ggp+theme(legend.position = "none", plot.margin = unit(rep(0.2,4), units="cm")), 
+  governance_ggp+theme(plot.margin = unit(rep(0.2,4), units = "cm"))
+  )
+combined_patchwork <- wrap_plots(plotList, ncol = 2) + 
+  plot_annotation(tag_levels = 'a')
+
+ggsave(here::here("figures/supplemental/spatial_scale_governance_barplots.pdf"),
+       combined_patchwork, width = 10, height = 6)
+
+
+
+```
+
+```{r continent ~ procedural equity ~ oro type}
+
+
+```
+
+
+```{r continent ~ procedural equity ~ oro type}
+oro_cont_pe <- join_oro_with_multilabels(
+  oro_df = oro_df,
+  codedVars = codedVars,
+  label_cols = c("continent", "procedural_equity"),
+  label_levels_list = list(
+    continent = c("Africa","Asia", "Europe",
+                  "North America","South America",
+                  "Oceania"),
+    climatic_impact_driver = c("TRUE","FALSE")
+  ),
+  id_col = "id"
+)
+
+# Filter out unidentified continents
+oro_cont_pe <- oro_cont_pe %>%
+  filter(continent != "None identified") %>%
+  mutate(continent = droplevels(continent))
+
+
+pe_continent_ggp <- ggplot()+
+  geom_col(data = oro_cont_pe , aes(x=oro_type, y= weightedSum, fill = procedural_equity))+
+  facet_wrap(vars(continent), ncol = 2, scales="free_y")+
+  scale_fill_manual(
+    values = c("darkgreen","grey"),
+    breaks = c("TRUE","FALSE")
+  )+
+  geom_vline(
+    data = data.frame(
+      xintercepts = c(4.5,6.5)
+    ),
+    aes(xintercept = xintercepts),
+    col="black", linewidth = 0.8
+  )+
+  geom_text(
+    data = data.frame(
+      x = c(2.5, 5.5, 7.5),
+      label = unique(oroTypeAes$branch)
+    ),
+    aes(x=x, label=label, y=Inf),
+    hjust=0.5, vjust = 1, size=3
+  )+
+  scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.25)))+
+  
+  labs(
+    x = "ORO type",
+    y="N articles (weighted)",
+    fill = "Procedural\nequity"
+  )+
+  theme_bw(base_size = 11)+
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1),
+    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
+  )
+
+pe_continent_ggp
+
 ggsave(
-  here::here("figures/supplemental/spatial_scale_vs_oro_barplot.pdf"),
-  plot = spatial_scale_ggp,
-  width = 7, height=5
+  here::here("figures/supplemental/oro_continent_procedural_equity_barplot.pdf"),
+  plot = pe_continent_ggp,
+  width = 9, height=6
 )
 
 ```
 
+
+
+
+# Visualizations for study results
 
 
 ```{r outcome type (social, economic, management) ~ qualitative outcome}
@@ -852,6 +999,188 @@ ggsave(
 )
 
 ```
+
+
+# Clustering based on features (excl study results)
+
+```{r prepare categorical data for clustering}
+# Prepare data as factors
+df_categories <- join_oro_with_multilabels_long(
+  oro_df = oro_df,
+  codedVars = codedVars,
+  label_cols = c("continent", "climatic_impact_driver",
+                 "spatial_scale","procedural_equity","governance_body",
+                 "rules_of_law"),
+  label_levels_list = list(
+    continent = c("Africa","Asia", "Europe",
+                  "North America","South America",
+                  "Oceania"),
+    climatic_impact_driver = cidAes$levels,
+    spatial_scale = c("Local","National","Regional","Global","None"),
+    procedural_equity = c("TRUE","FALSE"),
+    governance_body = c("Community-based","National government",
+                        "Regional (e.g. RFMOs)","International",
+                        "Private organizations/companies"),
+    rules_of_law = c("Law (binding)","Non-binding")
+    
+  ),
+  id_col = "id"
+) %>%
+  filter(!if_any(everything(), ~ grepl("None", .x))) %>%
+  mutate(
+    procedural_equity = plyr::revalue(procedural_equity, c("TRUE"="Procedural equity", "FALSE"="No Procedural equity"))
+  )%>%
+  mutate(across(
+      where(is.factor),
+      ~droplevels(.x)
+    )) %>%
+  dplyr::select(-id)
+
+summary(df_categories)
+```
+
+
+```{r multiple correspondance analysis - like PCA for categorical}
+library(FactoMineR)
+library(factoextra)
+
+
+# MCA (no missing values allowed)
+res_mca <- MCA(df_categories, graph = FALSE)
+
+# Scree plot of eigenvalues
+fviz_screeplot(res_mca, addlabels = TRUE)
+
+# MCA plot of individuals (data points)
+fviz_mca_ind(res_mca,
+             label = "none", # hide point labels
+             addEllipses = TRUE, ellipse.type = "confidence")
+
+
+
+
+# MCA plot of variable levels
+fviz_mca_var(res_mca, repel = TRUE)
+
+```
+
+```{r cluster at individual point level on MCA eigenvalues - not as interesting}
+# Get the coordinates of individuals
+mca_coords <- res_mca$ind$coord
+
+# K-means clustering on first few components
+set.seed(123)
+km_res <- kmeans(mca_coords[, 1:2], centers = 4)
+
+# Visualize clusters on MCA plot
+fviz_mca_ind(res_mca,
+             label = "none",
+             habillage = as.factor(km_res$cluster),
+             addEllipses = TRUE, ellipse.type = "norm")
+
+
+```
+
+```{r cluster the variables based on MCA coordinates}
+var_coords <- as.data.frame(res_mca$var$coord)
+var_coords$varname <- rownames(var_coords)
+
+
+set.seed(123)  # for reproducibility
+km_vars <- kmeans(var_coords[, 1:2], centers = 6)
+var_coords$cluster <- factor(km_vars$cluster)
+
+fviz_cluster(km_vars, data = var_coords[, 1:2],
+             geom = "text",
+             labelsize = 4,
+             main = "Clusters of Variable Levels")
+
+
+
+
+mca_cluster_label_ggp <- ggplot(var_coords, aes(x = `Dim 1`, y = `Dim 2`, color = cluster)) +
+  geom_point(size = 3) +
+  ggrepel::geom_text_repel(aes(label = varname), vjust = -0.7, size = 2.5,show.legend = FALSE) +
+  theme_minimal(base_size = 10) +
+  coord_cartesian(clip="off")+
+  scale_color_brewer(palette = "Dark2")+
+  scale_x_continuous(expand = expansion(mult=c(0.4,0.1)))+
+  scale_y_continuous(expand = expansion(mult=c(0.3,0.1)))+
+  labs(
+    color = "Label\n cluster"
+  )+
+  theme(
+    legend.position = "bottom"
+  )
+
+mca_cluster_label_ggp
+
+ggsave(
+  filename=here::here("figures/supplemental/mca_clustering_variable_labels.pdf"),
+  plot = mca_cluster_label_ggp,
+  width = 6, height=5, units='in'
+)
+
+```
+
+```{r cluster entire variables not just labels - this doesn't make sense}
+
+match_level2var <- function(labels, df_categories){
+  varnames <- rep(NA, length(labels))
+  for(i in 1:length(labels)){
+    label <- labels[i]
+    colind = which(df_categories == label, arr.ind = TRUE)[1,2]
+    varname = colnames(df_categories)[colind]
+    varnames[i] <- stringr::str_to_sentence(gsub("_"," ", varname))
+  }
+  
+  return(varnames)
+}
+
+
+var_coords$var <- match_level2var(var_coords$varname, df_categories)
+agg_coords <- var_coords %>%
+  group_by(var) %>%
+  summarise(across(starts_with("Dim"), mean))
+
+km_vars <- kmeans(agg_coords[, -1], centers = 4)
+agg_coords$cluster <- factor(km_vars$cluster)
+
+mca_cluster_variable_ggp <- ggplot(agg_coords, aes(x = `Dim 1`, y = `Dim 2`, color = cluster)) +
+  geom_point(size = 3) +
+  ggrepel::geom_text_repel(aes(label = var), vjust = -0.7, size = 3,show.legend = FALSE) +
+  theme_minimal(base_size = 10) +
+  scale_x_continuous(expand = expansion(mult=c(0.1)))+
+  scale_y_continuous(expand = expansion(mult=c(0.1)))+
+  coord_cartesian(clip="off")+
+  scale_color_brewer(palette = "Dark2")+
+  labs(
+    color = "Variable\n cluster"
+  )+
+  theme(
+    legend.position = "bottom"
+  )
+
+mca_cluster_variable_ggp
+```
+
+```{r plot clustering results - don't need}
+require(ggpubr)
+
+
+ggarrange(plotlist = list(mca_cluster_variable_ggp, mca_cluster_label_ggp),
+          nrow=1, labels = letters[1:2], align = "hv", widths = c(1,1.25)) %>%
+  ggexport(
+    filename = here::here("figures/supplemental/mca_clustering_variables.pdf"),
+    width = 10, height = 5
+  )
+
+
+```
+
+
+
+# Model predictors of positive effects
 
 Model is biased to pick up more positive effects, so not sure how good the finding is that there are less negative...
 
@@ -1054,6 +1383,136 @@ glm_summary$aic
 glm_summary$coefficients
 ```
 
+However, when all are fit together, which variables are most influential in predicting adaptive outcomes? Use Gradient boosted tree model
+
+```{r try gradient boosted tree model}
+library(gbm)
+
+# fit the model
+set.seed(123)
+result_gbm_df <- result_model_df %>%
+  mutate(
+    adaptive = as.numeric(adaptive)-1
+  ) %>%
+  select(-id, -result_type)
+
+## Subdivide into test and training sets
+set.seed(123)
+sub <- sample(2,nrow(result_gbm_df),replace=TRUE,prob=c(0.7,0.3))
+result_gbm_df.train <- result_gbm_df[sub==1,]
+result_gbm_df.test <- result_gbm_df[sub==2,]
+
+
+gbm_fit <- gbm(adaptive~.,distribution="bernoulli",data=result_gbm_df.train,
+           n.trees=1000,interaction.depth=3,shrinkage=0.05,cv.folds=3)
+
+## Select the optimal number of trees by cross validation
+best.iter <- gbm.perf(gbm_fit,method="cv")
+
+
+# The summary shows the variable importance
+gbm_summary <- summary(gbm_fit,n.trees=best.iter) %>%
+  as.data.frame()%>%
+  rename(Variable = var, `Relative influence`= rel.inf) %>%
+  mutate(
+    `Variable name`=stringr::str_to_sentence(gsub("_"," ", Variable))
+  )
+  
+gbm_summary 
+
+write.csv(gbm_summary%>%
+            select(`Variable name`, `Relative influence`),
+          file = here::here("outputs/adaptive_gbm_model_summary.csv"))
+
+
+## Partial dependence plots ? Or stick to the glm because it shows significance?
+opar <- par(mfrow=c(3,3))
+plot.gbm(gbm_fit,1,n.trees=best.iter)
+plot.gbm(gbm_fit,2,n.trees=best.iter)
+plot.gbm(gbm_fit,3,n.trees=best.iter)
+plot.gbm(gbm_fit,4,n.trees=best.iter)
+plot.gbm(gbm_fit,5,n.trees=best.iter)
+plot.gbm(gbm_fit,6,n.trees=best.iter)
+plot.gbm(gbm_fit,7,n.trees=best.iter)
+par(opar)
+
+# Required libraries
+library(gbm)
+library(ggplot2)
+library(patchwork)
+
+# Generate ggplots from gbm partial dependencies
+gbm_plot_list <- lapply(1:nrow(gbm_summary), function(i) {
+  var_name <- gbm_summary$Variable[i]
+  var_name_sym <- rlang::sym(var_name)
+  var_label <- gbm_summary$`Variable name`[i]
+  
+  n_samples <- table(result_gbm_df.train[,var_name]) %>% 
+    as.data.frame() %>%
+    rename_with(~ var_name, .cols = "Var1")
+    
+  
+  pd_data <- plot.gbm(gbm_fit, var_name, n.trees = best.iter, return.grid = TRUE) %>%
+    left_join(n_samples, by = var_name) %>%
+    mutate(
+      xlabel = paste0(!!var_name_sym, "\n(n = ", Freq,")")
+    )%>%
+    arrange(!!var_name_sym)
+  pd_data$xlabel <- factor(
+    pd_data$xlabel,
+    levels = pd_data$xlabel[order(pd_data[,var_name])]
+  )
+  
+  
+  relInfluence <- gbm_summary$`Relative influence`[i]%>%
+    scales::number(cale_cut = scales::cut_short_scale())
+  relInfluence <- paste("Relative influence =", relInfluence)
+  
+  # Create ggplot
+  ggplot(pd_data, aes(x = xlabel, y = y)) +
+    geom_point(color = "steelblue", size=3) +
+    geom_text(
+      x = -Inf, label = relInfluence, y=Inf, hjust = 0, vjust=1,
+      size=3
+    )+
+    labs(
+      x = var_label,
+      y = "Predicted effect"
+    ) +
+    # scale_x_discrete(
+    #   labels = function(x){
+    #     str_wrap(gsub("/"," / ", x), width = 35)
+    #     }
+    # )+
+    scale_y_continuous(
+      expand = expansion(mult = c(0,0.3))
+    )+
+    coord_cartesian(clip="off")+
+    theme_minimal(base_size = 10)+
+    theme(
+      axis.text.x = element_text(angle = 45, hjust=1)
+    )
+  
+})
+
+# Combine using patchwork
+combined_gbm_plot <- wrap_plots(gbm_plot_list, ncol = 3) +
+  plot_annotation(tag_levels = 'a')
+
+# Save to PDF
+ggsave(here::here("figures/supplemental/gbm_partial_dependence_plots.pdf"),
+       combined_gbm_plot, width = 10, height = 11)
+
+
+
+
+## Assess on the test set
+pr <- predict(gbm_fit, newdata=result_gbm_df.test, type="response") > 0.5
+
+cm <- caret::confusionMatrix(as.factor(as.numeric(pr)), reference = as.factor(result_gbm_df.test$adaptive))
+
+cm[["byClass"]][c("F1","Recall","Precision")]
+```
 
 
 
