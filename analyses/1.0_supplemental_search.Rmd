@@ -1,0 +1,99 @@
+---
+title: "1.0_supplemental_search"
+author: "Devi Veytia"
+date: "2025-08-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r set up libraries}
+## Load libraries
+library(dplyr)
+library(dbplyr)
+library(R.utils)
+library(RSQLite)
+library(ggplot2)
+
+# set up functions
+sourceFn <- dir(here::here("R"))
+for(i in 1:length(sourceFn)){
+  source(here::here("R", sourceFn[i]))
+}
+
+# set the seed
+addTaskCallback(function(...) {set.seed(123);TRUE})
+```
+
+
+
+
+Compile a list of the test list dois
+```{r compile list of test list dois}
+# get all abstract included article metadata
+included_abstracts <- readxl::read_excel(here::here("data/derived-data/screen-all/inclusions_abstract_metadata.xlsx"))
+
+# test list ids
+testListIds <- dir(here::here("data/raw-data/testListPDFs"))
+testListIds <- str_split(testListIds, "_")
+testListIds <- lapply(testListIds, FUN = function(x) x[1]) %>% 
+  unlist() %>%
+  as.numeric() 
+testListIds <- testListIds[!is.na(testListIds)]
+testListIds <- testListIds[!(testListIds %in% c(183, 1290,1415,13648,120956, 252))]
+testListIds <- testListIds[order(testListIds)]
+
+# [1]     71     85    283    293    480    538   1678   5078   5171   5281   6502   8058
+# [14]  10064 232677 244602 249273 250635 259944
+
+# get the dois
+testListDois <- included_abstracts$doi[included_abstracts$analysis_id %in% testListIds & !is.na(included_abstracts$doi)]
+
+paste(testListDois, collapse=" OR ")
+
+# "10.1007/s10784-012-9199-5, 10.1016/j.marpol.2017.11.018, 10.1007/978-3-319-39880-8\\_16, 10.3389/fmars.2021.652955, 10.1007/s10584-012-0599-x, 10.3389/fmars.2020.591642, 10.1016/j.ocecoaman.2022.106132, 10.3390/su3060823, 10.3389/fmars.2019.00803, 10.1016/j.marpol.2018.11.013, 10.1111/disa.12094, 10.1080/1369183X.2022.2066263, 10.1016/j.marpol.2021.104475, 10.1111/apv.12270, 10.1080/19480881.2017.1420579, 10.1016/j.ocecoaman.2017.04.001, 10.1175/WCAS-D-21-0124.1, 10.1016/j.marpol.2020.104240, 10.3389/fmars.2022.1059734"
+
+indexedInWos <- readxl::read_excel(
+  here::here("data/raw-data/testlist_indexedinWOS.xls")
+) %>%
+  filter(DOI %in% included_abstracts$doi) %>%
+  filter(!(DOI %in% c("10.1016/j.marpol.2018.11.013","10.3389/fmars.2022.1059734"))) # remove because in WOS keyword metadata with climate change not saved, 
+
+paste(indexedInWos$DOI, collapse=" OR ")
+
+
+savedrecs <- readxl::read_excel(
+  "C:\\Users\\deviv\\Downloads\\savedrecs.xls"
+)
+
+indexedInWos[(!(indexedInWos$DOI %in% savedrecs$DOI)),] %>%
+  select(`Article Title`, Abstract) %>%
+  View
+
+missing <- indexedInWos$DOI[(!(indexedInWos$DOI %in% savedrecs$DOI))]
+included_abstracts %>%
+  filter(doi %in% missing) %>%
+  View
+```
+
+10.3389/fmars.2022.1059734, 10.1175/WCAS-D-21-0124.1, 10.1080/1369183X.2022.2066263
+10.1016/j.ocecoaman.2022.106132
+10.3389/fmars.2021.652955
+10.1016/j.marpol.2021.104475
+10.3389/fmars.2020.591642
+10.1016/j.marpol.2020.104240
+10.1111/apv.12270
+10.3389/fmars.2019.00803
+10.1016/j.marpol.2018.11.013
+10.1016/j.marpol.2017.11.018
+10.1016/j.ocecoaman.2017.04.001
+10.1007/978-3-319-39880-8
+10.1111/disa.12094
+10.1007/s10784-012-9199-5
+10.1007/s10584-012-0599-x
+10.3390/su3060823
+
+
