@@ -66,6 +66,7 @@ join_oro_with_label <- function(oro_df, codedVars, label_col, label_levels = NUL
     group_by(oro_type, label) %>%
     summarise(
       weightedSum = sum(weight, na.rm = TRUE),
+      count = n_distinct(!!id_col_quo),
       oro_weight = sum(oro_weight, na.rm = TRUE),
       .groups = "drop"
     ) %>%
@@ -78,7 +79,7 @@ join_oro_with_label <- function(oro_df, codedVars, label_col, label_levels = NUL
   # Optional: reorder factor levels
   if (!is.null(label_levels)) {
     
-    if(sum(continent_oro$label == "None identified", na.rm=T) > 0){
+    if(sum(type_label_joined$label == "None identified", na.rm=T) > 0){
       label_levels = c(label_levels, "None identified")
     }
     
@@ -97,7 +98,8 @@ join_oro_with_multilabels <- function(
     codedVars,
     label_cols,               # character vector: c("continent", "sector", ...)
     label_levels_list = NULL, # named list: list(continent = c(...), sector = c(...))
-    id_col = "id"
+    id_col = "id",
+    make_summary = TRUE
 ) {
   id_col_sym <- rlang::sym(id_col)
   
@@ -149,14 +151,17 @@ join_oro_with_multilabels <- function(
     rowwise() %>%
     mutate(weight = prod(c_across(contains("weight")))) %>%
     ungroup() %>%
-    group_by(across(all_of(group_cols_sym))) %>%
-    summarise(weightedSum = sum(weight, na.rm = TRUE), count = n_distinct(id, na.rm=T), .groups = "drop")%>%
     mutate(across(
       where(is.factor),
       ~replace_na(.x, "None identified")
-    )) 
-  
-  
+    ))
+    
+  if(make_summary){
+    joined <- joined %>%
+      group_by(across(all_of(group_cols_sym))) %>%
+      summarise(weightedSum = sum(weight, na.rm = TRUE), count = n_distinct(id, na.rm=T), .groups = "drop") 
+  }
+    
   return(joined)
 }
 

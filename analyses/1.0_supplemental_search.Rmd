@@ -10,6 +10,16 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
+In conclusion, this may not be feasible, but maybe add a snowballing approach from a list of reviews?
+
+reviews:
+10.1002/9781118392607.ch25, 10.1016/j.fishres.2014.06.013, 10.1016/j.marpol.2016.05.014, 10.1016/j.gloenvcha.2018.07.009, 10.1016/j.marpol.2021.104654
+
+other papers of interest:
+10.1016/j.gloenvcha.2017.05.003
+
+Or maybe identify a subject for meta-analysis and complement with additional search
+
 ```{r set up libraries}
 ## Load libraries
 library(dplyr)
