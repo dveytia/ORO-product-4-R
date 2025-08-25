@@ -1414,6 +1414,356 @@ ggsave(
 
 ```
 
+```{r spider plot not separated by evidence type}
+
+# calculate outcomes
+oroOutcomes <- expand_labels_with_weight(df = studyResults, id_col = article_outcome_id, list_col = oro_type) %>%
+  left_join(studyResults %>% select(id, article_outcome_id,result_type, result_effect)) %>%
+  left_join(codedVars %>% select(id, evidence_type), by = "id") %>%
+  rename(
+    oro_type = label
+  ) %>%
+  mutate(
+    oro_type = factor(
+      oro_type,
+      levels = oroTypeAes$levels
+    ),
+    evidence_type = factor(
+      evidence_type,
+      levels=c("Quantitative metric","Social empirical","Qualitative - other")
+    )
+  )
+
+totals <- oroOutcomes %>%
+  group_by(oro_type) %>%
+  summarise(
+    total = sum(weight, na.rm=T)
+  )
+
+propPosOutcomes <- oroOutcomes %>%
+  filter(result_effect == "Positive") %>%
+  group_by(oro_type) %>%
+  summarise(
+    n_positive = sum(weight, na.rm=T)
+  ) %>%
+  left_join(
+    totals, by = c("oro_type")
+  ) %>%
+  mutate(
+    prop_positive = n_positive / total
+  ) 
+  
+
+tradeOffRatio <- expand_labels_with_weight(df = oroOutcomes, id_col = article_outcome_id, list_col = result_type) %>%
+  left_join(oroOutcomes %>% select(article_outcome_id, id, oro_type, result_effect, weight) %>% rename(oro_weight = weight),
+            relationship = "many-to-many") %>%
+  rename(
+    result_type = label,
+    result_type_weight = weight
+  ) %>%
+  group_by(
+    id, oro_type, result_effect, result_type, 
+  ) %>%
+  summarise(
+    weightedSum = sum(oro_weight*result_type_weight, na.rm=T)
+  )%>%
+  pivot_wider(
+    values_from = weightedSum,
+    names_from = result_effect,
+    values_fill = 0.00001
+  ) %>%
+  group_by(oro_type, id) %>%
+  summarise(
+    n_pos = sum(Positive),
+    n_neg = sum(Negative)
+  )%>%
+  mutate(
+    log_pos_neg_ratio = log(n_pos/n_neg)
+  )
+
+# quick check
+ggplot(tradeOffRatio, aes(x=log_pos_neg_ratio))+
+  geom_density()+
+  facet_wrap(vars(oro_type))
+
+
+avgTradeOffs <- tradeOffRatio%>%
+  group_by(oro_type) %>%
+  summarise(
+    mean_pnratio = mean(log_pos_neg_ratio, na.rm=T)
+  )%>%
+  ungroup()
+  # mutate(
+  #   mean_pnratio = rescale_signed(mean_pnratio)
+  # )
+
+
+
+## Get other axes from coded variables
+axisCols <- c("governance_body", "rules_of_law", "spatial_scale", "time_scale")
+
+factor_levels = list(
+    # evidence_type = c("Quantitative metric","Social empirical","Qualitative - other"),
+    governance_body = c("Community-based","Private organizations/companies",
+                        "National government",
+                        "Regional (e.g. RFMOs)","International"
+                        ),
+    rules_of_law = c("Law (binding)","Non-binding"),
+    time_scale = c("<= 1 month","1 month <= 1 year","1 year <= 5 years","5 years <= 10 years","> 10 years","None"),
+    spatial_scale = c("Local","National","Regional","Global","None")
+  )
+
+factor_level_lookup <- bind_rows(
+  lapply(names(factor_levels), function(fn) {
+    tibble(
+      factor_name  = fn,
+      factor_level = factor_levels[[fn]],
+      factor_num   = seq_along(factor_levels[[fn]])
+    )
+  })
+)
+
+rescale_signed <- function(x) {
+  # Start with all NA to preserve missing values
+  out <- rep(NA_real_, length(x))
+  
+  # Separate positives and negatives
+  neg_idx <- which(x < 0 & !is.na(x))
+  pos_idx <- which(x > 0 & !is.na(x))
+  
+  # Rescale negatives to (-1, 0)
+  if (length(neg_idx) ==1){
+    out[neg_idx] <- -1
+  }else if (length(neg_idx) > 0) {
+    neg <- x[neg_idx]
+    out[neg_idx] <- -1 + (neg - min(neg, na.rm = TRUE)) /
+      (max(neg, na.rm = TRUE) - min(neg, na.rm = TRUE))
+  }
+  
+  # Rescale positives to (0, 1)
+  if (length(pos_idx) == 1){
+    out[pos_idx] <- 1
+  }else if (length(pos_idx) > 0) {
+    pos <- x[pos_idx]
+    out[pos_idx] <- (pos - min(pos, na.rm = TRUE)) /
+      (max(pos, na.rm = TRUE) - min(pos, na.rm = TRUE))
+  }
+  
+  # Keep zeros as 0
+  zero_idx <- which(x == 0 & !is.na(x))
+  out[zero_idx] <- 0
+  
+  out
+}
+
+
+
+
+
+spiderAxes_df <- join_oro_with_multilabels(
+  oro_df = oro_df,
+  codedVars = codedVars,
+  label_cols = c("governance_body", "rules_of_law", "spatial_scale", "time_scale"),
+  label_levels_list = factor_levels,
+  id_col = "id",
+  make_summary = FALSE
+) %>%
+  filter(!if_any(everything(), ~ grepl("None", .x))) %>%
+  mutate(
+    across(
+      where(is.factor),
+      ~droplevels(.x)
+    ) 
+  )%>%
+  pivot_longer(
+    cols = all_of(axisCols),   # melt only axis columns
+    names_to = "factor_name",  # column names become factor_name
+    values_to = "factor_level" # factor values become factor_level
+  )%>%
+  left_join(
+    factor_level_lookup, by = c("factor_name","factor_level")
+  ) %>%
+  # mutate(
+  #   weighted_axis = weight*factor_num
+  # ) %>%
+  # group_by(
+  #   id, oro_type, evidence_type, factor_name
+  # ) %>%
+  # summarise(
+  #   weighted_axis = sum(weighted_axis, na.rm=T)
+  # )%>%
+  group_by(
+    oro_type, factor_name
+  ) %>%
+  summarise(
+    weighted_axis = sum(factor_num, na.rm=T)/n()
+  )%>%
+  # summarise(
+  #   weighted_axis = mean(weighted_axis, na.rm=T)
+  # )%>%
+  pivot_wider(
+    names_from = factor_name,
+    values_from = weighted_axis
+  ) %>%
+  
+  # Join with outcomes data
+  left_join(avgTradeOffs, by = c("oro_type")) %>%
+  left_join(propPosOutcomes, by = c("oro_type")) %>%
+  select(-n_positive, -total) %>%
+  ungroup() %>%
+  mutate(
+    across(
+      where(is.numeric),
+      ~rescale_signed(.x)
+    )
+  )%>%
+  ungroup()
+
+
+
+## try 2 -- with weights
+spiderAxes_df <- join_oro_with_multilabels(
+  oro_df = oro_df,
+  codedVars = codedVars,
+  label_cols = c("governance_body", "rules_of_law", "spatial_scale", "time_scale"),
+  label_levels_list = factor_levels,
+  id_col = "id",
+  make_summary = FALSE
+) %>%
+  filter(!if_any(everything(), ~ grepl("None", .x))) %>%
+  mutate(
+    across(
+      where(is.factor),
+      ~droplevels(.x)
+    ) 
+  )%>%
+  pivot_longer(
+    cols = all_of(axisCols),   # melt only axis columns
+    names_to = "factor_name",  # column names become factor_name
+    values_to = "factor_level" # factor values become factor_level
+  )%>%
+  left_join(
+    factor_level_lookup, by = c("factor_name","factor_level")
+  ) %>%
+  mutate(
+    weighted_axis = weight*factor_num
+  ) %>%
+  group_by(
+    id, oro_type, factor_name
+  ) %>%
+  summarise(
+    weighted_axis = sum(weighted_axis, na.rm=T)
+  )%>%
+  group_by(oro_type, factor_name)%>%
+  summarise(
+    weighted_axis = mean(weighted_axis, na.rm=T)
+  )%>%
+  pivot_wider(
+    names_from = factor_name,
+    values_from = weighted_axis
+  ) %>%
+  
+  # Join with outcomes data
+  left_join(avgTradeOffs, by = c("oro_type")) %>%
+  left_join(propPosOutcomes, by = c("oro_type")) %>%
+  select(-n_positive, -total) %>%
+  ungroup() %>%
+  mutate(
+    across(
+      where(is.numeric),
+      ~rescale_signed(.x)
+    )
+  )%>%
+  ungroup()
+summary(spiderAxes_df)
+
+
+require(ggradar)
+require(ggiraphExtra)
+require(ggiraph)
+
+
+
+allAxisCols <- colnames(spiderAxes_df)[-c(1,6)]
+allAxisColsLabs <- c("Governance\nbody\nscale","Law","Spatial\nscale","Time\nscale","log(+/-)","% Positive")
+allAxisColsLabs <- c("Governance\nbody\nscale","Law","Spatial\nscale","Time\nscale","% Positive")
+
+ymn <- floor(min(unlist(c(spiderAxes_df[,allAxisCols])), na.rm=T))
+ymx <- ceiling(max(unlist(c(spiderAxes_df[,allAxisCols])), na.rm=T))
+grid_lines <- pretty(c(ymn, ymx))
+
+evidencePal <- c("#253494","#41b6c4","#ffffcc")
+
+
+my_coord_radar <- function(theta = "x", start = 0, direction = 1, clip = "on") {
+  theta <- match.arg(theta, c("x", "y"))
+  r <- if (theta == "x") "y" else "x"
+  ggproto(
+    "CoordRadar",
+    ggplot2::CoordPolar,
+    theta = theta,
+    r = r,
+    start = start,
+    direction = sign(direction),
+    clip = clip,
+    is_linear = function(coord) TRUE
+  )
+}
+
+
+ggRad <- ggRadar(data = spiderAxes_df %>% select(-mean_pnratio), aes(facet = oro_type), rescale=FALSE,
+                 size=0.8, alpha = 0.3)+
+  facet_wrap(~oro_type, ncol=4, labeller = label_wrap_gen(width=30))+
+  scale_x_discrete(
+    breaks = allAxisCols,
+    labels = allAxisColsLabs
+  )+
+  scale_y_continuous(
+    # limits = c(ymn, ymx),
+    breaks = grid_lines
+  )+
+  scale_fill_manual(
+    breaks = oroTypeAes$levels,
+    values = oroTypeAes$col
+  )+
+  scale_color_manual(
+    breaks = oroTypeAes$levels,
+    values = rep("black", length(oroTypeAes$col))
+  )+
+  geom_text(
+    data = data.frame(
+      x=rep(0, length(grid_lines)-1),
+      y=grid_lines[2:(length(grid_lines))]
+    ),
+    aes(x=x, y=y, label=y),
+    size=2,
+    inherit.aes = FALSE
+  )+
+  labs(
+    col = "Evidence type",
+    fill = "Evidence type"
+  )+
+  my_coord_radar(clip="off")+
+  theme_minimal()+
+  theme(
+    legend.position = "none",
+    axis.text.y = element_blank(),
+    axis.text.x = element_text(margin = margin(t=20), vjust=0),
+    strip.text = element_text(size=9),
+    # panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_line(colour = "lightgrey", linewidth = 0.5),
+  )
+ggRad
+
+
+ggsave(
+  here::here("figures/supplemental/radar_plot_oro_noEvidenceType.pdf"),
+  ggRad,
+  width = 7, height = 5
+)
+
+
+```
 
 
 
