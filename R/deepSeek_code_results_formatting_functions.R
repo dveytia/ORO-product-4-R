@@ -1,6 +1,45 @@
 
 ## FUNCTIONS FOR FORMATTING DEEPSEEK CODING RESULTS
 
+# rename_labels <- function(df, label_map){
+#   for(v in 1:length(label_map)){
+#     varname = names(label_map)[v]
+#     for(l in 1:length(label_map[[v]])){
+#       old <- label_map[[v]][l]
+#       new <- names(label_map[[v]])[l]
+#       df[,varname] <- gsub(old,new, df[,varname])
+#     }
+#   }
+#   return(df)
+# }
+# 
+# 
+
+
+
+rename_labels <- function(df, label_map) {
+  require(stringi)
+  for (varname in names(label_map)) {
+    map <- label_map[[varname]]
+    
+    # fix a trailing space in your map name(s)
+    names(map) <- trimws(names(map))
+    
+    old <- unname(map)      # substrings to find
+    new <- names(map)       # replacements
+    
+    # Single pass per column; fixed (literal) matching; very fast
+    df[[varname]] <- stri_replace_all_fixed(
+      df[[varname]], old, new, vectorize_all = FALSE
+    )
+  }
+  df
+}
+
+
+
+
+
 expand_labels <- function(df, id_col, list_col) {
   id_col_quo <- enquo(id_col)
   list_col_quo <- enquo(list_col)
@@ -232,4 +271,39 @@ join_oro_with_multilabels_long <- function(
   return(joined)
 }
 
+
+
+## Old function for rescaling while maintaining positive and negative values
+rescale_signed <- function(x) {
+  # Start with all NA to preserve missing values
+  out <- rep(NA_real_, length(x))
+  
+  # Separate positives and negatives
+  neg_idx <- which(x < 0 & !is.na(x))
+  pos_idx <- which(x > 0 & !is.na(x))
+  
+  # Rescale negatives to (-1, 0)
+  if (length(neg_idx) ==1){
+    out[neg_idx] <- -1
+  }else if (length(neg_idx) > 0) {
+    neg <- x[neg_idx]
+    out[neg_idx] <- -1 + (neg - min(neg, na.rm = TRUE)) /
+      (max(neg, na.rm = TRUE) - min(neg, na.rm = TRUE))
+  }
+  
+  # Rescale positives to (0, 1)
+  if (length(pos_idx) == 1){
+    out[pos_idx] <- 1
+  }else if (length(pos_idx) > 0) {
+    pos <- x[pos_idx]
+    out[pos_idx] <- (pos - min(pos, na.rm = TRUE)) /
+      (max(pos, na.rm = TRUE) - min(pos, na.rm = TRUE))
+  }
+  
+  # Keep zeros as 0
+  zero_idx <- which(x == 0 & !is.na(x))
+  out[zero_idx] <- 0
+  
+  out
+}
 
