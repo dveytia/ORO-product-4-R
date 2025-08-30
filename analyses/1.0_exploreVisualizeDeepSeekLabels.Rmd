@@ -151,12 +151,12 @@ dbDisconnect(p4_db)
 ```{r load in coding results}
 # study level metadata
 codedVars_test <- readxl::read_excel(
-  here::here("outputs/coding-answers-human/testList_answers_df_v9_human.xlsx")
+  here::here("outputs/coding-answers-human/testList_answers_df_v9.2_human.xlsx")
 ) %>%
   filter(!(id %in% c(250635)))
 
 codedVars_all <- readxl::read_excel(
-  here::here("outputs/coding-answers-human/unseen_answers_df_noTestList_v9_human.xlsx")
+  here::here("outputs/coding-answers-human/unseen_answers_df_noTestList_v9.2_human.xlsx")
 )
 
 cvcols <- intersect(colnames(codedVars_test), colnames(codedVars_all))
@@ -179,7 +179,7 @@ codedVars <- codedVars_test %>%
         grepl("Interview|Survey|Workshop|Experiment", study_method) ~ "Social empirical",
         TRUE ~ "Qualitative - other"
       )
-  )
+  ) 
 
 # result level data
 studyResults_test <- readxl::read_excel(
@@ -431,7 +431,7 @@ dev.off()
 
 
 
-```{r continent barplot}
+```{r continent heatmap + bar plot}
 
 continent_oro <- join_oro_with_label(oro_df, codedVars, continent, 
                                      c(
@@ -565,6 +565,108 @@ combined_patchwork <- wrap_plots(plotList, ncol = 2)
 
 ggsave(here::here("figures/supplemental/oro_type_vs_continent_heatmap.pdf"),
        combined_patchwork, width = 9, height = 4)
+
+
+
+
+
+
+```
+
+
+```{r continent oro two barplots}
+
+continent_oro <- join_oro_with_label(oro_df, codedVars, continent, 
+                                     c(
+                                       "Africa","Asia", "Europe",
+                                       "North America","South America",
+                                       "Oceania"
+                                     )
+                                     ) %>%
+  complete(oro_type, label, fill = list(weightedSum = 0, count = 0)) %>%
+  filter(
+    label != "None identified"
+  ) %>%
+  mutate(
+    label = droplevels(label)
+  )
+
+level_pal = RColorBrewer::brewer.pal(n = length(levels(continent_oro$label)),
+                                     name = "Accent"
+                                    )
+if("None identified" %in% levels(continent_oro$label)){
+  level_pal <- level_pal[-1]
+  level_pal <- c(level_pal, "darkgrey")
+}
+
+
+
+
+
+
+continent_bar_ggp1 <- ggplot(data = continent_oro %>%
+                              group_by(oro_type, label) %>%
+                              summarise(
+                                weightedSum = sum(weightedSum, na.rm=T)
+                              ), 
+                            aes(x=label, y = weightedSum, fill = oro_type))+
+  scale_fill_manual(
+    breaks = oroTypeAes$levels,
+    values = oroTypeAes$col
+  )+
+  geom_col()+
+  guides(fill=guide_legend(nrow=4))+
+  labs(
+    y="N articles (weighted)",
+    fill = "ORO type",
+    x="Continent"
+
+  )+
+
+  theme_minimal(base_size = 10)+
+  theme(
+    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm"),
+    axis.text.x = element_text(angle=45, hjust=1),
+    legend.position = "bottom",
+    legend.box.margin = margin(0, 15, 0, 0)
+  )
+
+continent_bar_ggp1
+
+continent_bar_ggp2 <- ggplot(data = continent_oro %>%
+                              group_by(oro_type, label) %>%
+                              summarise(
+                                weightedSum = sum(weightedSum, na.rm=T)
+                              ), 
+                            aes(x=oro_type, y = weightedSum, fill = label))+
+  scale_fill_manual(values = level_pal)+
+  geom_col()+
+  guides(fill=guide_legend(nrow=3))+
+  labs(
+    y="N articles (weighted)",
+    fill = "Continent",
+    x="ORO type"
+
+  )+
+
+  theme_minimal(base_size = 10)+
+  theme(
+    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm"),
+    axis.text.x = element_text(angle=45, hjust=1),
+    legend.position = "bottom"
+  )
+
+continent_bar_ggp2
+
+
+
+
+plotList = list(continent_bar_ggp1, continent_bar_ggp2)
+combined_patchwork <- wrap_plots(plotList, ncol = 2) +
+  plot_annotation(tag_levels = 'a')
+
+ggsave(here::here("figures/supplemental/oro_type_vs_continent_barplots.pdf"),
+       combined_patchwork, width = 8, height = 6)
 
 
 
@@ -1481,10 +1583,6 @@ tradeOffRatio <- expand_labels_with_weight(df = oroOutcomes, id_col = article_ou
     log_pos_neg_ratio = log(n_pos/n_neg)
   )
 
-# quick check
-ggplot(tradeOffRatio, aes(x=log_pos_neg_ratio))+
-  geom_density()+
-  facet_wrap(vars(oro_type))
 
 
 avgTradeOffs <- tradeOffRatio%>%
@@ -1762,6 +1860,264 @@ ggsave(
   width = 7, height = 5
 )
 
+
+
+
+
+## Version where axis is on quartile
+spiderAxes_df <- join_oro_with_multilabels(
+  oro_df = oro_df,
+  codedVars = codedVars,
+  label_cols = c("governance_body", "rules_of_law", "spatial_scale", "time_scale"),
+  label_levels_list = factor_levels,
+  id_col = "id",
+  make_summary = FALSE
+) %>%
+  filter(!if_any(everything(), ~ grepl("None", .x))) %>%
+  mutate(
+    across(
+      where(is.factor),
+      ~droplevels(.x)
+    ) 
+  )%>%
+  pivot_longer(
+    cols = all_of(axisCols),   # melt only axis columns
+    names_to = "factor_name",  # column names become factor_name
+    values_to = "factor_level" # factor values become factor_level
+  )%>%
+  left_join(
+    factor_level_lookup, by = c("factor_name","factor_level")
+  ) %>%
+  mutate(
+    weighted_axis = weight*factor_num
+  ) %>%
+  group_by(
+    id, oro_type, factor_name
+  ) %>%
+  summarise(
+    weighted_axis = sum(weighted_axis, na.rm=T)
+  )%>%
+  group_by(oro_type, factor_name)%>%
+  summarise(
+    weighted_axis = mean(weighted_axis, na.rm=T)
+  )%>%
+  pivot_wider(
+    names_from = factor_name,
+    values_from = weighted_axis
+  ) %>%
+  
+  # Join with outcomes data
+  left_join(avgTradeOffs, by = c("oro_type")) %>%
+  left_join(propPosOutcomes, by = c("oro_type")) %>%
+  select(-n_positive, -total) %>%
+  ungroup() %>%
+  mutate(
+    across(
+      where(is.numeric),
+      ~ntile(.x, n=5)
+    )
+  )%>%
+  ungroup()
+summary(spiderAxes_df)
+
+
+require(ggradar)
+require(ggiraphExtra)
+require(ggiraph)
+
+
+
+allAxisCols <- colnames(spiderAxes_df)[-c(1,6)]
+allAxisColsLabs <- c("Governance\nbody\nscale","Law","Spatial\nscale","Time\nscale","log(+/-)","% Positive")
+allAxisColsLabs <- c("Governance\nbody\nscale","Law","Spatial\nscale","Time\nscale","% Positive")
+
+ymn <- floor(min(unlist(c(spiderAxes_df[,allAxisCols])), na.rm=T))
+ymx <- ceiling(max(unlist(c(spiderAxes_df[,allAxisCols])), na.rm=T))
+grid_lines <- pretty(c(ymn, ymx))
+
+evidencePal <- c("#253494","#41b6c4","#ffffcc")
+
+
+my_coord_radar <- function(theta = "x", start = 0, direction = 1, clip = "on") {
+  theta <- match.arg(theta, c("x", "y"))
+  r <- if (theta == "x") "y" else "x"
+  ggproto(
+    "CoordRadar",
+    ggplot2::CoordPolar,
+    theta = theta,
+    r = r,
+    start = start,
+    direction = sign(direction),
+    clip = clip,
+    is_linear = function(coord) TRUE
+  )
+}
+
+
+ggRad <- ggRadar(data = spiderAxes_df %>% select(-mean_pnratio), aes(facet = oro_type), rescale=FALSE,
+                 size=0.8, alpha = 0.3)+
+  facet_wrap(~oro_type, ncol=4, labeller = label_wrap_gen(width=30))+
+  scale_x_discrete(
+    breaks = allAxisCols,
+    labels = allAxisColsLabs
+  )+
+  scale_y_continuous(
+    # limits = c(ymn, ymx),
+    breaks = grid_lines
+  )+
+  scale_fill_manual(
+    breaks = oroTypeAes$levels,
+    values = oroTypeAes$col
+  )+
+  scale_color_manual(
+    breaks = oroTypeAes$levels,
+    values = rep("black", length(oroTypeAes$col))
+  )+
+  geom_text(
+    data = data.frame(
+      x=rep(0, length(grid_lines)-1),
+      y=grid_lines[2:(length(grid_lines))]
+    ),
+    aes(x=x, y=y, label=y),
+    size=2,
+    inherit.aes = FALSE
+  )+
+  labs(
+    col = "Evidence type",
+    fill = "Evidence type"
+  )+
+  my_coord_radar(clip="off")+
+  theme_minimal()+
+  theme(
+    legend.position = "none",
+    axis.text.y = element_blank(),
+    axis.text.x = element_text(margin = margin(t=20), vjust=0),
+    strip.text = element_text(size=9),
+    # panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_line(colour = "lightgrey", linewidth = 0.5),
+  )
+ggRad
+
+
+ggsave(
+  here::here("figures/supplemental/radar_plot_oro_noEvidenceType_quantileAxis.pdf"),
+  ggRad,
+  width = 7, height = 5
+)
+
+
+
+
+
+## Version without NBS
+spiderAxes_df <- join_oro_with_multilabels(
+  oro_df = oro_df,
+  codedVars = codedVars,
+  label_cols = c("governance_body", "rules_of_law", "spatial_scale", "time_scale"),
+  label_levels_list = factor_levels,
+  id_col = "id",
+  make_summary = FALSE
+) %>%
+  filter(!if_any(everything(), ~ grepl("None", .x))) %>%
+  mutate(
+    across(
+      where(is.factor),
+      ~droplevels(.x)
+    ) 
+  )%>%
+  pivot_longer(
+    cols = all_of(axisCols),   # melt only axis columns
+    names_to = "factor_name",  # column names become factor_name
+    values_to = "factor_level" # factor values become factor_level
+  )%>%
+  left_join(
+    factor_level_lookup, by = c("factor_name","factor_level")
+  ) %>%
+  mutate(
+    weighted_axis = weight*factor_num
+  ) %>%
+  group_by(
+    id, oro_type, factor_name
+  ) %>%
+  summarise(
+    weighted_axis = sum(weighted_axis, na.rm=T)
+  )%>%
+  group_by(oro_type, factor_name)%>%
+  summarise(
+    weighted_axis = mean(weighted_axis, na.rm=T)
+  )%>%
+  pivot_wider(
+    names_from = factor_name,
+    values_from = weighted_axis
+  ) %>%
+  
+  # Join with outcomes data
+  left_join(avgTradeOffs, by = c("oro_type")) %>%
+  left_join(propPosOutcomes, by = c("oro_type")) %>%
+  select(-n_positive, -total) %>%
+  ungroup() %>%
+  filter(oro_type != "Nature-based") %>%
+  mutate(oro_type = droplevels(oro_type)) %>%
+  mutate(
+    across(
+      where(is.numeric),
+      ~rescale_signed(.x)
+    )
+  )%>%
+  ungroup()
+
+
+
+ggRad <- ggRadar(data = spiderAxes_df %>% select(-mean_pnratio), aes(facet = oro_type), rescale=FALSE,
+                 size=0.8, alpha = 0.3)+
+  facet_wrap(~oro_type, ncol=4, labeller = label_wrap_gen(width=30))+
+  scale_x_discrete(
+    breaks = allAxisCols,
+    labels = allAxisColsLabs
+  )+
+  scale_y_continuous(
+    # limits = c(ymn, ymx),
+    breaks = grid_lines
+  )+
+  scale_fill_manual(
+    breaks = oroTypeAes$levels,
+    values = oroTypeAes$col
+  )+
+  scale_color_manual(
+    breaks = oroTypeAes$levels,
+    values = rep("black", length(oroTypeAes$col))
+  )+
+  geom_text(
+    data = data.frame(
+      x=rep(0, length(grid_lines)-1),
+      y=grid_lines[2:(length(grid_lines))]
+    ),
+    aes(x=x, y=y, label=y),
+    size=2,
+    inherit.aes = FALSE
+  )+
+  labs(
+    col = "Evidence type",
+    fill = "Evidence type"
+  )+
+  my_coord_radar(clip="off")+
+  theme_minimal()+
+  theme(
+    legend.position = "none",
+    axis.text.y = element_blank(),
+    axis.text.x = element_text(margin = margin(t=20), vjust=0),
+    strip.text = element_text(size=9),
+    # panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_line(colour = "lightgrey", linewidth = 0.5),
+  )
+ggRad
+
+
+ggsave(
+  here::here("figures/supplemental/radar_plot_oro_noEvidenceType_noNbS.pdf"),
+  ggRad,
+  width = 7, height = 5
+)
 
 ```
 
