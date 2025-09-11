@@ -70,7 +70,7 @@ sampleDf <- pred_safe_fish %>%
   left_join(relevantdedups, by="analysis_id") %>%
   collect()
 
-nrow(sampleDf)
+nrow(sampleDf) # 444
 
 
 ## Write out to ris files for training sets

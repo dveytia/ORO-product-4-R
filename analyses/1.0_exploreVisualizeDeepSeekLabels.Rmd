@@ -24,6 +24,10 @@ library(gbm)
 library(patchwork)
 library(ggpubr)
 library(countrycode)
+library(viridis)
+library(broom)
+library(raster)
+library(rnaturalearth)
 
 conflict_prefer("select", "dplyr")
 conflicts_prefer(dplyr::filter)
@@ -144,6 +148,7 @@ relevantdedups <- tbl(p4_db, "relevantdedups_p4") %>%
 dbDisconnect(p4_db)
 
 ```
+
 
 ```{r load in coding results}
 # study level metadata
@@ -329,32 +334,189 @@ country_lookup <- data.frame(country = unique(id_country$country)) %>%
 # For each country, sum indicator across all years - > each country has 6 values.
 # FOr each indicator, scale from 0 to 1. 
 # Then take the sum across all indicators to get an overall indicator, range 0 to 6
-wbi <- readxl::read_excel(
+
+wbi_indicator <- readxl::read_excel(
   here::here("data/raw-data/external/worldbank_worldwide-governance-indicators/wgidataset.xlsx")
 )%>%
-  filter(code %in% country_lookup$iso3c)%>%
   group_by(code, indicator) %>%
   summarise(
-    year_sum = sum(as.numeric(estimate), na.rm=T)
+    year_mean = mean(as.numeric(estimate), na.rm=T)
   ) %>%
   mutate(
-    sum_scaled = scales::rescale(year_sum)
+    mean_scaled = scales::rescale(year_mean)
   ) %>%
   ungroup()%>%
   group_by(code) %>%
   summarise(
-    governance_indicator = sum(sum_scaled, na.rm=T)
+    governance_indicator = sum(mean_scaled, na.rm=T)
   )
   
-summary(wbi)
+summary(wbi_indicator)
+
+
+## Fisheries vulnerability (RCP 8.5) From Fig 3 Thiault et al 2019 (10.1126/sciadv.aaw9976) 
+
+fish_vul <- read.csv(
+  here::here("data/raw-data/external/Thiault_et_al_2019_FishAgr_Vulnerability/world_FishAgr_Vulnerability.csv")
+) %>%
+  select(adm0, fsh_V_85) %>%
+  distinct(adm0, fsh_V_85) %>%
+  na.omit() %>%
+  rename(
+    fishery_vulnerability=fsh_V_85
+  )
+
 
 
 ## Join everything into data
 id_country_data <- id_country %>%
   left_join(country_lookup, by="country") %>%
-  left_join(wbi, by = c("iso3c"="code"))
+  left_join(wbi_indicator, # %>% filter(code %in% country_lookup$iso3c), 
+            by = c("iso3c"="code")
+            ) %>%
+  left_join(fish_vul, by=c("iso3c"="adm0"))
 
 summary(id_country_data)
+
+all_country_data <- wbi_indicator %>%
+  inner_join(fish_vul, by = c("code" = "adm0")) %>%
+  rename(iso3c = code)
+
+anti_id_country_data <- all_country_data %>%
+  anti_join(country_lookup, by = c("iso3c" = "iso3c")) 
+
+# check there are no duplicates
+sum(anti_id_country_data$iso3c %in% id_country_data$iso3c) # 0
+```
+
+
+```{r maps of wbi governance indicators}
+source(here::here("R", "functions_to_format.R")) # all functions needed to format data
+source(here::here("R", "functions_to_plot.R")) # all functions needed to plot data
+
+
+wbi_all <- readxl::read_excel(
+  here::here("data/raw-data/external/worldbank_worldwide-governance-indicators/wgidataset.xlsx")
+)%>%
+  group_by(code, indicator) %>%
+  summarise(
+    year_sum = sum(as.numeric(estimate), na.rm=T),
+    year_mean = mean(as.numeric(estimate), na.rm=T)
+  ) %>%
+  mutate(
+    sum_scaled = scales::rescale(year_sum),
+    mean_scaled = scales::rescale(year_mean)
+  ) %>%
+  ungroup()
+
+wbi_combined <- wbi_all %>%
+  group_by(code) %>%
+  summarise(
+    governance_indicator_sum = sum(sum_scaled, na.rm=T),
+    governance_indicator_mean = sum(mean_scaled, na.rm=T)
+  ) %>%
+  mutate(
+    indicator = "Combined metric"
+  )
+  
+
+
+# combined data frame
+wbi_plt_df <- wbi_all %>%
+  rename(value = mean_scaled)%>%
+  select(code, indicator, value) %>%
+  bind_rows(
+    wbi_combined %>% 
+      rename(value = governance_indicator_mean) %>%
+      select(code, indicator, value)
+  ) %>%
+  pivot_wider(
+    id_cols = code, names_from = indicator, values_from = value
+  )
+
+
+indicators <- c(
+  "cc" = "Control of corruption",
+  "ge" = "Government effectiveness",
+  "pv" = "Political stability & absence of violence/terrorism",
+  "rl" = "Rule of law",
+  "rq" = "Regulatory quality",
+  "va" = "Voice and accountability",
+  "Combined metric" = "Combined metric"
+)
+
+
+
+## read in external data
+PROJ = "+proj=robin +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
+world_shp <- ne_countries(returnclass = "sf", scale="large")
+
+# Join in plotting data (fill and point)
+data_map <- world_shp %>%
+  dplyr::full_join(wbi_plt_df, by = c("iso_a3"="code")) %>%
+  sf::st_transform(crs = PROJ)
+
+# reproject
+data_map <- try_format_data2map(input_args = list(
+  data = data_map,
+  PROJ = PROJ
+  )
+)
+
+
+## Plot
+wbi_ggps <- list()
+
+for(i in 1:length(indicators)){
+  
+  tmp_map <- ggplot2::ggplot() +
+      ## Country fill
+      ggplot2::geom_sf(data    =  data_map$data, 
+                       mapping = ggplot2::aes(fill     = !! sym(names(indicators)[i]),
+                                              geometry = geometry), 
+                       color   = "black", 
+                       size    = 0.1) +
+      
+      ggplot2::scale_fill_viridis_c(
+        name = str_wrap(indicators[i], width = 30)
+      )+
+      # Bounding box
+      ggplot2::geom_sf(data   = data_map$box, 
+                       colour = "black", 
+                       fill   = NA, 
+                       size   = 0.1) +
+      ## Add latitude and longitude labels
+      ggplot2::geom_text(data = data_map$lat_text, mapping = ggplot2::aes(x = X.prj2-1*10e5, y = Y.prj,          label = lbl), color = "grey20", size = 1.5) +
+      ggplot2::geom_text(data = data_map$lon_text, mapping = ggplot2::aes(x = X.prj,         y = Y.prj-0.5*10e5, label = lbl), color = "black",  size = 1.5) + 
+      
+      ggplot2::theme_void() +
+    # Themes
+    theme(axis.title.x     = element_blank(),
+          axis.title.y     = element_blank(),
+          plot.margin = unit(c(0.1,0.1,0.2,0.1),"cm"),
+          legend.title.position = "top",
+          legend.position = "bottom"
+          )
+  
+
+    # tmp_map
+  wbi_ggps[[i]] <- tmp_map
+  
+  
+}
+
+
+## combine 
+require(patchwork)
+combined_plots <- wrap_plots(
+  wbi_ggps, ncol = 2
+)+
+  plot_annotation(tag_levels = "a")
+
+
+ggsave(here::here("figures/supplemental/all_wbi_indicator_maps.png"),
+       combined_plots, width = 8, height = 12, dpi = 600)
+
 
 ```
 
@@ -370,6 +532,69 @@ Spider plot with the following axes (each axis is a weighted composite metric of
 - Enabling conditions: Procedural, Governance bodies, Rules of Law
 - Scale: Time, Space
 - Outcomes: maybe relative # positive outcomes for each outcome type?
+
+```{r summarise screening results}
+
+# Load answers from training screening and all screening and combine
+train <- readxl::read_excel(here::here("data/derived-data/screen-train/ArticleAnswers_train_set1.xlsx"))
+all <- readxl::read_excel(here::here("data/derived-data/screen-all/ArticleAnswers_conflictsResolved_2024-03-27.xlsx"))
+df <- rbind(train, all)
+df <- df %>%
+  mutate(sysrev_id = as.numeric(`Article ID`),
+         include = as.logical(Include)) %>%
+  rename(title = Title) 
+
+df_unique <- readr::read_csv(here::here("data/derived-data/screen-all/ArticleAnswers_conflictsResolved_2024-03-27_deduplicated.csv"))
+df_unique$label <- NULL
+df_unique$matches <- NULL
+
+df_unique <- df_unique %>%
+  left_join(df %>% dplyr::select(sysrev_id, `Exclusion criteria`), by = c("sysrev_id"))
+
+
+keyLabels <- c("Population","Intervention","Literature review","Outcome")
+keyLabelCounts <- rep(NA, length(keyLabels))
+
+for(l in 1:length(keyLabels)){
+  keyLabelCounts[l] <- sum(grepl(keyLabels[l], df_unique$`Exclusion criteria`, ignore.case = TRUE))
+}
+
+sumdf <- rbind(
+  # data.frame(
+  #   statistic = "Inclusion",
+  #   label = c("Include","Exclude"),
+  #   counts = c(sum(df_unique$include), length(df_unique$include)-sum(df_unique$include))
+  # ),
+  data.frame(
+    statistic = "Exclusion label",
+    label = keyLabels,
+    counts = keyLabelCounts
+  )
+)
+sumdf$label <- factor(sumdf$label, 
+                      levels = c(keyLabels)) #"Include","Exclude",
+
+screeningSummary_ggp <- ggplot(sumdf, aes(x=label, y=counts))+
+  geom_col()+
+  geom_text(aes(label = counts), vjust = -0.2)+
+  labs(
+    x = "First screening criterion failed",
+    y = "N articles"
+  )+
+  theme_minimal(base_size = 10)+
+  theme(
+    axis.text.x = element_text(angle = 45, vjust=1, hjust=1)
+  )
+screeningSummary_ggp
+
+
+ggsave(
+  filename = here::here("figures/supplemental/abstract_screen_excl_counts.pdf"),
+  plot = screeningSummary_ggp,
+  width = 5, height=4
+)
+```
+
 
 ```{r number of OROs per paper}
 
@@ -988,27 +1213,24 @@ totals <- scale_scatter_df %>%
 
 
 scale_scatter_ggp <- ggplot(
-  data = scale_scatter_df %>%
-    left_join(totals) %>%
-    mutate(
-      weightedSum = weightedSum/total*100
-    )
+  data = scale_scatter_df #%>%
+    # left_join(totals) %>%
+    # mutate(
+    #   weightedSum = weightedSum/total*100
+    # )
   ) +
   facet_wrap(vars(oro_type), labeller = label_wrap_gen(width = 30))+
   geom_tile(aes(x=time_scale, y=spatial_scale, fill = weightedSum))+
-  scale_fill_viridis_c()+
-  # scale_fill_stepsn(
-  #   colors = viridis::viridis(7),
-  #   breaks = cuts,
-  #   values = scales::rescale(cuts),
-  #   labels = cuts #scales::number(cuts, accuracy = 0.1)
-  # )+
-  # 
+  # scale_fill_viridis_c()+
+  scale_fill_gradientn(
+    colors = viridis::viridis(n=10),
+    values = scales::rescale(exp((1:10)/10))
+  )+
   theme_minimal(base_size = 10)+
   labs(
     x = "Time scale",
     y = "Spatial scale",
-    fill = "% Articles\n(weighted)"
+    fill = "N Articles\n(weighted)"
   )+
   theme(
     axis.text.x = element_text(angle=90, hjust=1, vjust = 0.5),
@@ -2157,6 +2379,634 @@ ggsave(
 ```
 
 
+# Bivariate map governance indicators ~ vulnerability
+
+```{r calculate correlation between governance and vulnerability}
+
+## Shapiro-Wilk test for normality
+## Null hypothesis -- data are normal
+shapiro.test(all_country_data$governance_indicator) # p-value = 0.1518 -- normal
+shapiro.test(all_country_data$fishery_vulnerability) # p-value = 0.01322 -- normal
+
+
+
+cor.test(all_country_data$governance_indicator, all_country_data$fishery_vulnerability,
+         method = "pearson")
+
+# t = -3.757, df = 153, p-value = 0.000244
+# alternative hypothesis: true correlation is not equal to 0
+# 95 percent confidence interval:
+#  -0.4286375 -0.1393653
+# sample estimates:
+#        cor 
+# -0.2906282 
+
+## Conclusion. Correlation is significant but not strong
+```
+
+
+```{r Bivariate map governance indicators ~ vulnerability}
+library(R.utils)
+library(tidyr)
+library(stringr)
+library(viridis)
+library(broom)
+library(raster)
+library(rnaturalearth)
+
+source(here::here("R", "functions_to_format.R")) # all functions needed to format data
+source(here::here("R", "functions_to_plot.R")) # all functions needed to plot data
+
+
+## read in external data
+world_shp <- ne_countries(returnclass = "sf", scale="large")
+
+
+
+## Calculate number of articles 
+
+# Cut axes variables by quantile
+dat_bivar <- id_country_data %>%
+  mutate(
+    group_x = cut(
+      fishery_vulnerability,
+      breaks = fv_cuts, quantile(fishery_vulnerability, probs = seq(0, 1, 0.1), na.rm = TRUE),
+      include.lowest = TRUE,
+      labels = FALSE
+    ),
+    group_y = cut(
+      governance_indicator,
+      breaks = quantile(governance_indicator, probs = seq(0, 1, 0.1), na.rm = TRUE),
+      include.lowest = TRUE,
+      labels = FALSE
+    ),
+    group   = paste0(group_x, ".", group_y)
+  ) 
+
+# Lookup table of group id by country
+dat_bivar_iso <- dat_bivar %>%
+  distinct(iso3c, group_x, group_y)
+
+# Calculate number of articles by quantile group (to plot on the legend)
+dat_bivar_sum <- dat_bivar%>%
+  group_by(group_x, group_y, group) %>%
+  summarise(
+    n_articles = n_distinct(id)
+  )
+
+# Calculate number of articles by country (to plot on the map)
+dat_country_sum <- dat_bivar%>%
+  group_by(iso3c) %>%
+  summarise(
+    n_articles_country = n_distinct(id)
+  )
+
+
+  
+
+
+
+## Format data for colour scale
+
+bivariate_color_scale <- color_bivariate_map(nquantiles  = 10, 
+                                                 bottomright   = "#05A3FC", # rgb(130,0,80, maxColorValue = 255), 
+                                             
+                                                 upperright  = "#9D9F9F", # rgb(255,230,15, maxColorValue = 255),
+                                                 bottomleft  = "#9D9F9F",
+                                             
+                                                 upperleft = "#F60497", # rgb(0,150,235, maxColorValue = 255)  
+                                                 ylab        = "Governance indicator",
+                                                 xlab        = "Fishery vulnerability")
+
+bivariate_color_scale_plt <- bivariate_color_scale |> 
+    separate(col = group, into = c("group_x", "group_y"), sep = "\\.", convert = TRUE, remove = FALSE)
+
+dat_bivar_scale <- dat_bivar_sum %>%
+  left_join(bivariate_color_scale, by = "group")
+
+
+# check
+ggplot(bivariate_color_scale_plt, aes(group_x, group_y,fill=fill))+geom_tile()+scale_fill_identity()
+
+
+
+
+
+## Define a common size scale for number of articles to be used between map and bivariate legend
+scale_range <- range(c(dat_bivar_sum$n_articles, dat_country_sum$n_articles_country), na.rm=T)
+
+size_brks <- labeling::extended(scale_range[1], scale_range[2], m = 3)
+size_brks[size_brks==0] <- 1
+
+
+
+## legend plot
+bivar_map_legend <- ggplot2::ggplot() +
+    
+    ggplot2::geom_tile(data    = bivariate_color_scale_plt,
+                       mapping = ggplot2::aes(group_x, group_y, fill = fill)) +
+    # ggplot2::scale_x_continuous(labels = as.vector(x_quantile), breaks = as.vector(x_quantile)) +
+    ggplot2::scale_fill_identity() +
+    
+    ggplot2::geom_point(data = dat_bivar_sum, mapping = aes(group_x, group_y, size = n_articles), shape = 21, show.legend = TRUE, fill = "grey30", alpha=0.8) +
+    ggplot2::scale_size(breaks = size_brks, range = c(1, 4)) +
+    
+    ggplot2::labs(x = "Fishery vulnerability", y = "Governance indicator") +
+    cowplot::theme_map() +
+    guides(size = guide_legend(title = "# Articles", title.position = "right", title.hjust = 0.5, ncol = 1)) +
+    ggplot2::theme(axis.title      = ggplot2::element_text(size = 11), 
+                   axis.title.x    = ggplot2::element_text(margin = ggplot2::margin(t = 0,
+                                                                                    r = 0,
+                                                                                    b = 0,
+                                                                                    l = 0)),
+                   axis.title.y    = ggplot2::element_text(angle  = 90,
+                                                           margin = ggplot2::margin(t = 0,
+                                                                                    r = 5,
+                                                                                    b = 0,
+                                                                                    l = 0)),
+                   legend.key      = element_rect(fill = 'transparent', colour = 'transparent'),
+                   legend.position = "right",
+                   legend.justification = "center",
+                   legend.title         = element_text(size = 11, angle = -90),
+                   legend.text = element_text(size=10),
+                   legend.margin      = margin(0,0,0,0),
+                   legend.box.spacing = unit(0, "pt"),
+                   plot.background = ggplot2::element_rect(fill  = "white", 
+                                                           color = "transparent")) +
+    ggplot2::coord_fixed()
+bivar_map_legend
+
+
+
+## Format data for map plotting
+
+# Join in the corresponding colour for each country according to its gov indicator and vulnerability
+# Join in its iso lookup so it can be joined with shape file
+dat_bivar_map <- dat_bivar_sum %>%
+  left_join(dat_bivar_scale, by= base::intersect(colnames(dat_bivar_sum),colnames(dat_bivar_scale))) %>%
+  right_join(dat_bivar_iso, by = base::intersect(colnames(dat_bivar_sum),colnames(dat_bivar_iso))) %>%
+  rename(
+    iso_code = iso3c
+  )
+
+# Join in plotting data (fill and point)
+world_shp_data <- world_shp %>%
+  dplyr::full_join(dat_bivar_map, by = c("iso_a3"="iso_code")) %>%
+  left_join(dat_country_sum, by = c("iso_a3"="iso3c"))%>%
+  sf::st_transform(crs = PROJ)
+
+
+# Reproject and format world shapefile
+PROJ = "+proj=robin +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
+data_map <- try_format_data2map(input_args = list(
+  data = world_shp_data,
+  PROJ = PROJ
+  )
+)
+
+# set NA value for fill
+data_map$data$fill[is.na(data_map$data$fill)] <- "grey90"
+    
+
+
+## Plot the map
+gov_fishV_bivar_map <- ggplot2::ggplot() +
+    ## Country fill
+    ggplot2::geom_sf(data    = data_map$data, 
+                     mapping = ggplot2::aes(fill     = fill,
+                                            geometry = geometry), 
+                     color   = "black", 
+                     size    = 0.1) +
+    
+    ggplot2::scale_fill_identity(na.value = "grey90") +
+  ## Points for number of articles
+  stat_sf_coordinates(data        = data_map$data,
+                          mapping     = aes(size = n_articles_country),
+                          geom = "point",
+                          shape = 21,
+                          fill      = "grey20",
+                          colour = "black",
+                      alpha=0.8,
+                          show.legend = FALSE) +
+      scale_size(breaks = size_brks, range = range(1,4))+
+    # Bounding box
+    ggplot2::geom_sf(data   = data_map$box, 
+                     colour = "black", 
+                     fill   = NA, 
+                     size   = 0.1) +
+    ## Add latitude and longitude labels
+    ggplot2::geom_text(data = data_map$lat_text, mapping = ggplot2::aes(x = X.prj2-1*10e5, y = Y.prj,          label = lbl), color = "grey20", size = 1.5) +
+    ggplot2::geom_text(data = data_map$lon_text, mapping = ggplot2::aes(x = X.prj,         y = Y.prj-0.5*10e5, label = lbl), color = "black",  size = 1.5) + 
+    
+    ggplot2::theme_void() +
+  # Themes
+  theme(axis.title.x     = element_blank(),
+        axis.title.y     = element_blank(),
+        legend.position = "none")
+
+
+
+
+# gov_fishV_bivar_map
+    
+
+## Format panels with legend
+map_bi <- cowplot::ggdraw() +
+    cowplot::draw_plot(gov_fishV_bivar_map,    x = 0.0, y = 0.00, width = 0.65, height = 1.0) +
+    cowplot::draw_plot(bivar_map_legend, x = 0.65, y = 0.3, width = 0.4, height = 0.4)
+
+
+## Save plot
+ggsave(here::here("figures/supplemental/governance_v_fisheryVulnerability_bivarMap.pdf"), width = 10, height = 5, device = "pdf")
+```
+
+
+```{r two bivariate map governance indicators ~ vulnerability}
+library(R.utils)
+library(tidyr)
+library(stringr)
+library(viridis)
+library(broom)
+library(raster)
+library(rnaturalearth)
+
+source(here::here("R", "functions_to_format.R")) # all functions needed to format data
+source(here::here("R", "functions_to_plot.R")) # all functions needed to plot data
+
+
+## read in external data
+world_shp <- ne_countries(returnclass = "sf", scale="large")
+
+
+
+## Format data for colour scale
+bivariate_color_scale <- color_bivariate_map(nquantiles  = 10, 
+                                                 bottomright   = "#05A3FC", # rgb(130,0,80, maxColorValue = 255), 
+                                             
+                                                 upperright  = "#9D9F9F", # rgb(255,230,15, maxColorValue = 255),
+                                                 bottomleft  = "#9D9F9F",
+                                             
+                                                 upperleft = "#F60497", # rgb(0,150,235, maxColorValue = 255)  
+                                                 ylab        = "Governance indicator",
+                                                 xlab        = "Fishery vulnerability")
+
+# check
+bivariate_color_scale_plt <- bivariate_color_scale |> 
+    separate(col = group, into = c("group_x", "group_y"), sep = "\\.", convert = TRUE, remove = FALSE)
+
+ggplot(bivariate_color_scale_plt, aes(group_x, group_y,fill=fill))+geom_tile()+scale_fill_identity()
+
+
+
+
+## Calculate number of articles 
+
+# Cut axes variables by quantile
+# fv_cuts <- quantile(all_country_data$fishery_vulnerability, probs = seq(0, 1, 0.1), na.rm = TRUE)
+# gi_cuts <- quantile(all_country_data$governance_indicator, probs = seq(0, 1, 0.1), na.rm = TRUE)
+
+all_dat_bivar <- all_country_data %>%
+  mutate(
+    group_x = cut(
+      fishery_vulnerability,
+      breaks = fv_cuts, quantile(fishery_vulnerability, probs = seq(0, 1, 0.1), na.rm = TRUE),
+      include.lowest = TRUE,
+      labels = FALSE
+    ),
+    group_y = cut(
+      governance_indicator,
+      breaks = quantile(governance_indicator, probs = seq(0, 1, 0.1), na.rm = TRUE),
+      include.lowest = TRUE,
+      labels = FALSE
+    ),
+    group   = paste0(group_x, ".", group_y)
+  ) %>% 
+  left_join(bivariate_color_scale, by = "group")
+
+
+
+# Lookup table of group id by country
+all_dat_bivar_iso <- all_dat_bivar %>%
+  distinct(iso3c, group_x, group_y)
+
+# Calculate number of articles by quantile group (to plot on the legend)
+dat_bivar_sum <- all_dat_bivar %>%
+  right_join(country_lookup, by = "iso3c") %>%
+  right_join(id_country, by = "country") %>%
+  group_by(group_x, group_y, group, fill) %>%
+  summarise(
+    n_articles = n_distinct(id)
+  )
+
+# Calculate number of articles by country (to plot on the map)
+dat_country_sum <- all_dat_bivar %>%
+  right_join(country_lookup, by = "iso3c") %>%
+  right_join(id_country, by = "country") %>%
+  group_by(iso3c) %>%
+  summarise(
+    n_articles_country = n_distinct(id)
+  )
+
+
+
+
+
+## Define a common size scale for number of articles to be used between map and bivariate legend
+scale_range <- range(c(dat_bivar_sum$n_articles, dat_country_sum$n_articles_country), na.rm=T)
+
+size_brks <- labeling::extended(scale_range[1], scale_range[2], m = 3)
+size_brks[size_brks==0] <- 1
+
+
+
+## legend plot
+bivar_map_legend <- ggplot2::ggplot() +
+    
+    ggplot2::geom_tile(data    = bivariate_color_scale_plt,
+                       mapping = ggplot2::aes(group_x, group_y, fill = fill)) +
+    # ggplot2::scale_x_continuous(labels = as.vector(x_quantile), breaks = as.vector(x_quantile)) +
+    ggplot2::scale_fill_identity() +
+    
+    ggplot2::geom_point(data = dat_bivar_sum, mapping = aes(group_x, group_y, size = n_articles), shape = 21, show.legend = TRUE, fill = "grey30", alpha=0.8) +
+    ggplot2::scale_size(breaks = size_brks, range = c(1, 4)) +
+    
+    ggplot2::labs(x = "Fishery vulnerability", y = "Governance indicator") +
+    cowplot::theme_map() +
+    guides(size = guide_legend(title = "# Articles", title.position = "right", title.hjust = 0.5, ncol = 1)) +
+    ggplot2::theme(axis.title      = ggplot2::element_text(size = 11), 
+                   axis.title.x    = ggplot2::element_text(margin = ggplot2::margin(t = 0,
+                                                                                    r = 0,
+                                                                                    b = 0,
+                                                                                    l = 0)),
+                   axis.title.y    = ggplot2::element_text(angle  = 90,
+                                                           margin = ggplot2::margin(t = 0,
+                                                                                    r = 5,
+                                                                                    b = 0,
+                                                                                    l = 0)),
+                   legend.key      = element_rect(fill = 'transparent', colour = 'transparent'),
+                   legend.position = "right",
+                   legend.justification = "center",
+                   legend.title         = element_text(size = 11, angle = -90),
+                   legend.text = element_text(size=10),
+                   legend.margin      = margin(0,0,0,0),
+                   legend.box.spacing = unit(0, "pt"),
+                   plot.background = ggplot2::element_rect(fill  = "white", 
+                                                           color = "transparent")) +
+    ggplot2::coord_fixed()
+bivar_map_legend
+
+
+
+## Format data for map plotting
+
+# Join in the corresponding colour for each country according to its gov indicator and vulnerability
+# Join in its iso lookup so it can be joined with shape file
+dat_bivar_map <- dat_bivar_sum %>%
+  # left_join(dat_bivar_scale, by= base::intersect(colnames(dat_bivar_sum),colnames(dat_bivar_scale))) %>%
+  full_join(all_dat_bivar_iso, by = base::intersect(colnames(dat_bivar_sum),colnames(dat_bivar_iso))) %>%
+  rename(
+    iso_code = iso3c
+  )
+
+anti_dat_bivar_map <- all_dat_bivar %>%
+  anti_join(country_lookup, by = "iso3c") %>%
+  rename(iso_code = iso3c)
+
+# Join in plotting data (fill and point)
+world_shp_data <- world_shp %>%
+  # Plotting colour for each country (fill)
+  dplyr::full_join(dat_bivar_map, by = c("iso_a3"="iso_code")) %>%
+  # Number of articles/country (point size)
+  left_join(dat_country_sum, by = c("iso_a3"="iso3c"))%>%
+  sf::st_transform(crs = PROJ)
+
+anti_world_shp_data <- world_shp %>%
+  # Plotting colour for each country
+  dplyr::full_join(anti_dat_bivar_map, by = c("iso_a3"="iso_code")) %>%
+  sf::st_transform(crs = PROJ)
+
+
+# Reproject and format world shapefile
+PROJ = "+proj=robin +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
+data_map <- try_format_data2map(input_args = list(
+  data = world_shp_data,
+  PROJ = PROJ
+  )
+)
+anti_data_map <- try_format_data2map(input_args = list(
+  data = anti_world_shp_data,
+  PROJ = PROJ
+  )
+)
+
+# set NA value for fill
+data_map$data$fill[is.na(data_map$data$fill)] <- "grey90"
+anti_data_map$data$fill[is.na(anti_data_map$data$fill)] <- "grey90"
+    
+grat_label_size = 3
+
+## Plot the map
+gov_fishV_bivar_map <- ggplot2::ggplot() +
+  ggtitle("a.")+
+    ## Country fill
+    ggplot2::geom_sf(data    = data_map$data, 
+                     mapping = ggplot2::aes(fill     = fill,
+                                            geometry = geometry), 
+                     color   = "black", 
+                     size    = 0.1) +
+    
+    ggplot2::scale_fill_identity(na.value = "grey90") +
+  ## Points for number of articles
+  stat_sf_coordinates(data        = data_map$data,
+                          mapping     = aes(size = n_articles_country),
+                          geom = "point",
+                          shape = 21,
+                          fill      = "grey20",
+                          colour = "black",
+                      alpha=0.8,
+                          show.legend = FALSE) +
+      scale_size(breaks = size_brks, range = range(1,4))+
+    # Bounding box
+    ggplot2::geom_sf(data   = data_map$box, 
+                     colour = "black", 
+                     fill   = NA, 
+                     size   = 0.1) +
+    ## Add latitude and longitude labels
+    ggplot2::geom_text(data = data_map$lat_text, mapping = ggplot2::aes(x = X.prj2-1*10e5, y = Y.prj,          label = lbl), color = "grey20", size = grat_label_size, hjust=1) +
+    ggplot2::geom_text(data = data_map$lon_text, mapping = ggplot2::aes(x = X.prj,         y = Y.prj-0.5*10e5, label = lbl), color = "black",  size = grat_label_size, angle= 45, hjust=1, vjust=1) + 
+    
+    ggplot2::theme_void() +
+  coord_sf(clip="off")+
+  # Themes
+  theme(axis.title.x     = element_blank(),
+        axis.title.y     = element_blank(),
+        plot.margin = unit(c(0,0.1,0.1,0.1), "cm"),
+        legend.position = "none",
+        plot.title = element_text(size=26)
+        )
+
+
+
+gov_fishV_bivar_map
+
+
+
+## Plot the ant-map
+anti_gov_fishV_bivar_map <- ggplot2::ggplot() +
+  ggtitle("b.")+
+    ## Country fill
+    ggplot2::geom_sf(data    = anti_data_map$data, 
+                     mapping = ggplot2::aes(fill     = fill,
+                                            geometry = geometry), 
+                     color   = "black", 
+                     size    = 0.1) +
+    
+    ggplot2::scale_fill_identity(na.value = "grey90") +
+    # Bounding box
+    ggplot2::geom_sf(data   = data_map$box, 
+                     colour = "black", 
+                     fill   = NA, 
+                     size   = 0.1) +
+    ## Add latitude and longitude labels
+    ggplot2::geom_text(data = data_map$lat_text, mapping = ggplot2::aes(x = X.prj2-1*10e5, y = Y.prj,          label = lbl), color = "grey20", size = grat_label_size, hjust=1) +
+    ggplot2::geom_text(data = data_map$lon_text, mapping = ggplot2::aes(x = X.prj,         y = Y.prj-0.5*10e5, label = lbl), color = "black",  size = grat_label_size, angle= 45, hjust=1, vjust=1) + 
+    
+    ggplot2::theme_void() +
+  coord_sf(clip="off")+
+  # Themes
+  theme(axis.title.x     = element_blank(),
+        axis.title.y     = element_blank(),
+        plot.margin = unit(c(0,0.1,0.1,0.1), "cm"),
+        legend.position = "none",
+        plot.title = element_text(size=26)
+        )
+
+
+
+
+anti_gov_fishV_bivar_map
+    
+
+## Format panels with legend
+patchwork_layout <- c(
+  "AAA
+  AAA
+  #B#
+  CCC
+  CCC"
+)
+
+map_bi <- wrap_plots(
+  gov_fishV_bivar_map, free(bivar_map_legend), anti_gov_fishV_bivar_map,
+  ncol=1, nrow=3,
+  design = patchwork_layout
+  # widths = c(1), heights = c(1, 0.4, 1)
+  # guides = "keep", axes="keep"
+)
+
+## Save plot
+ggsave(here::here("figures/supplemental/governance_v_fisheryVulnerability_bivarMap_anti.png"), 
+       plot=map_bi,
+       width = 10, height = 12, dpi=300)
+
+ggsave(here::here("figures/supplemental/governance_v_fisheryVulnerability_bivarMap_anti.pdf"), 
+       plot=map_bi,
+       width = 10, height = 12)
+```
+
+
+
+Only governance indicator predicts the number of articles
+```{r model fits of the number of articles ~ governance + vulnerability}
+require(glmmTMB)
+require(ggeffects)
+require(sjPlot)
+
+dat_bivar_mod_df <- dat_bivar %>%
+  group_by(country, governance_indicator, fishery_vulnerability) %>%
+  summarise(
+    n_articles = n_distinct(id),
+    .groups = "drop"
+  )%>%
+  filter(0 < n_articles)
+
+
+bivar_mod <- glm(n_articles ~ governance_indicator + fishery_vulnerability, 
+                 data = dat_bivar_mod_df,
+                 family=poisson())
+od <- performance::check_overdispersion(bivar_mod)
+
+if(od$dispersion_ratio > 1 & od$p_value < 0.05){
+    bivar_mod <- glmmTMB(n_articles ~ governance_indicator + fishery_vulnerability,
+             data = dat_bivar_mod_df,
+             family=nbinom2)
+    
+}
+
+
+bivar_mod_sum <- summary(bivar_mod)
+bivar_mod_sum
+
+r2 <- performance::r2_mcfadden(bivar_mod)
+
+modSummary <- as.data.frame(bivar_mod_sum$coefficients$cond) %>%
+    tibble::rownames_to_column("Term") %>%
+    mutate(
+      Term = str_to_sentence(gsub("_"," ", Term)),
+      sig = ifelse(`Pr(>|z|)` <= 0.05, "*",""),
+      `P value class` = paste0( ufs::formatPvalue(`Pr(>|z|)`),sig),
+      label = paste0("\u03b2 = ", signif(Estimate, 2),"\n",`P value class`),
+      `R2 (McFadden)` = signif(r2$R2, 3)
+    ) %>%
+  select(-sig)
+
+gov_ggp <- plot_model(bivar_mod, type = "pred", terms = c("governance_indicator"),show.data = TRUE)+
+  geom_text(x=-Inf, y=Inf, label = modSummary$label[grepl("Govern", modSummary$Term)],
+            inherit.aes = FALSE, vjust=1, hjust=0,size=3, check_overlap = TRUE)+
+  labs(
+    x="Governance indicator",
+    y="N articles"
+  )+
+  theme_minimal(base_size = 9)+
+  theme(
+    plot.title = element_blank()
+  )
+gov_ggp
+
+vul_ggp <- plot_model(bivar_mod, type = "pred", terms = c("fishery_vulnerability"),show.data = TRUE)+
+  geom_text(x=-Inf, y=Inf, label = modSummary$label[grepl("Fish", modSummary$Term)],
+            inherit.aes = FALSE, vjust=1, hjust=0,size=3, check_overlap = TRUE)+
+  labs(
+    x="Fishery vulnerability",
+    y="N articles"
+  )+
+  theme_minimal(base_size = 9)+
+  theme(
+    plot.title = element_blank()
+  )
+vul_ggp
+
+
+
+
+## Save results
+
+# Plot
+require(patchwork)
+combined <- wrap_plots(list(gov_ggp, vul_ggp), ncol = 2) +
+  plot_annotation(tag_levels = 'a')
+
+ggsave(here::here("figures/supplemental/glm_nArticles_by_govInd_and_fishVul.pdf"),
+        combined, width = 7, height = 3.5)
+
+# Model summary
+write.csv(
+  modSummary %>% select(-label),
+  here::here("outputs/glm_nArticles_by_govInd_and_fishVul_mod_summary.csv"),row.names = FALSE
+)
+
+```
+
 
 # Model predictors of positive effects
 
@@ -2201,7 +3051,7 @@ studyResults_bin <- allIds %>%
   )
 
 
-
+## alternate data set at the outcome level. So possible to have > 1 outcomes /publication. 
 result_model_df <- join_oro_with_multilabels_long(
   oro_df = oro_df,
   codedVars = codedVars,
@@ -2421,7 +3271,7 @@ result_gbm_df <- result_model_df %>%
   )%>%
   # Add country indicators
   left_join(id_country_data %>% 
-              select(id, governance_indicator), 
+              select(-c(country, country_weight, iso3c)), 
             by="id", relationship = "many-to-many")%>%
   select(-id) 
 
@@ -2465,6 +3315,9 @@ gbm_plot_list <- lapply(1:nrow(gbm_summary), function(i) {
   var_name <- gbm_summary$Variable[i]
   var_name_sym <- rlang::sym(var_name)
   var_label <- gbm_summary$`Variable name`[i]
+  relInfluence <- gbm_summary$`Relative influence`[i]%>%
+    scales::number(cale_cut = scales::cut_short_scale())
+  relInfluence <- paste("Relative influence =", relInfluence)
   
   if(class(result_gbm_df.train[,var_name])=="numeric"){
     ## If numeric
@@ -2474,7 +3327,8 @@ gbm_plot_list <- lapply(1:nrow(gbm_summary), function(i) {
       )%>%
       arrange(!!var_name_sym)
     
-    n_samples <- data.frame(x=result_gbm_df.train[,var_name])
+    
+    n_samples <- data.frame(x=result_gbm_df[,var_name])
     sample_dens <- ggplot()+ geom_density(data = n_samples, aes(x=x), inherit.aes = FALSE)
     sample_dens <- layer_data(sample_dens)
     sample_dens$density_scaled <- scales::rescale(
@@ -2489,14 +3343,15 @@ gbm_plot_list <- lapply(1:nrow(gbm_summary), function(i) {
         aes(x=x, ymax = density_scaled),
         fill="grey", alpha=0.5, ymin = min(pd_data$y, na.rm=T)
       )+
-      geom_line(color = "steelblue", size=1) +
+      geom_line(color = "steelblue", linewidth=1) +
       geom_text(
         x = -Inf, label = relInfluence, y=Inf, hjust = 0, vjust=1,
         size=3
       )+
       labs(
-        x = var_label,
-        y = "Predicted adaptation effect"
+        title = var_label,
+        y = "Predicted adaptation effect",
+        x=""
       ) +
       scale_y_continuous(
         expand = expansion(mult = c(0,0.3))
@@ -2514,6 +3369,11 @@ gbm_plot_list <- lapply(1:nrow(gbm_summary), function(i) {
     as.data.frame() %>%
     rename_with(~ var_name, .cols = "Var1")
     
+    # recalculate counts of n articles from original data ?
+    for(s in 1:nrow(n_samples)){
+      n_samples$Freq[s] <- sum(grepl(as.character(n_samples[s,var_name]), codedVars[[var_name]]))
+    }
+    
   
     pd_data <- plot.gbm(gbm_fit, var_name, n.trees = best.iter, return.grid = TRUE) %>%
       left_join(n_samples, by = var_name) %>%
@@ -2525,9 +3385,7 @@ gbm_plot_list <- lapply(1:nrow(gbm_summary), function(i) {
       pd_data$xlabel,
       levels = pd_data$xlabel[order(pd_data[,var_name])]
     )
-    relInfluence <- gbm_summary$`Relative influence`[i]%>%
-      scales::number(cale_cut = scales::cut_short_scale())
-    relInfluence <- paste("Relative influence =", relInfluence)
+    
     
     # Create ggplot
     ggplot(pd_data, aes(x = xlabel, y = y)) +
@@ -2537,8 +3395,9 @@ gbm_plot_list <- lapply(1:nrow(gbm_summary), function(i) {
         size=3
       )+
       labs(
-        x = var_label,
-        y = "Predicted adaptation effect"
+        title = var_label,
+        y = "Predicted adaptation effect",
+        x=""
       ) +
       # scale_x_discrete(
       #   labels = function(x){
@@ -2575,8 +3434,8 @@ pr <- predict(gbm_fit, newdata=result_gbm_df.test, type="response") > 0.5
 cm <- caret::confusionMatrix(as.factor(as.numeric(pr)), reference = as.factor(result_gbm_df.test$adaptive))
 
 cm[["byClass"]][c("F1","Recall","Precision")]
-#        F1    Recall Precision 
-# 0.9473684 0.9000000 1.0000000
+       # F1    Recall Precision 
+       #  1         1         1
 ```
 
 ## Poisson model of number of positive effects - remove
@@ -2817,6 +3676,7 @@ for(r in 1:length(resultTypes)){
 
 tradeoff_ggp <- ggplot(resultTradeOffs_df, aes(x=result_type))+
   facet_wrap( ~ positive_result, scales = "free_y")+
+  scale_y_continuous(expand = expansion(mult=c(0.15,0.15)))+
   geom_rect(aes(x=result_type, width=0.7, ymin = Negative, ymax = 0), fill="#d01c8b")+
   geom_rect(aes(x=result_type, width=0.7, ymin = 0, ymax = Positive), fill="#4dac26")+
   geom_text(aes(y=Positive, label = Positive), hjust=0, size=3)+
@@ -2826,8 +3686,11 @@ tradeoff_ggp <- ggplot(resultTradeOffs_df, aes(x=result_type))+
         x = "Adaptation outcome type",
         y = "Adaptive outcomes v. trade-off (weighted sum)"
       )+
-      coord_flip()+
+      coord_flip(clip = "off")+
       theme_minimal(base_size = 10)
+  # theme(
+  #   plot.margin = unit(c(rep(0.2,4)), "cm")
+  # )
 tradeoff_ggp
 
 ggsave(
@@ -2835,6 +3698,29 @@ ggsave(
   tradeoff_ggp,
   width = 6, height=5
 )
+
+
+
+# ## Model this? Not quite sure how though
+# resultTradeOffs_df_long <- resultTradeOffs_df %>%
+#   pivot_longer(cols = c("Positive", "Negative"), 
+#                names_to = "outcome_sign", 
+#                values_to = "value")
+# 
+# 
+# # I think I need to separate and model postive and negative separately
+# ## lmer
+# library(lme4)
+# model <- lmer(value ~ result_type * positive_result + (1|outcome_sign), data = resultTradeOffs_df_long)
+# 
+# summary(model)
+# 
+# # 2-way anova
+# aov_model <- aov(value ~ result_type * positive_result, data = resultTradeOffs_df_long)
+# summary(aov_model)
+# 
+# aov_pos <- aov(Positive ~ result_type + positive_result, data = resultTradeOffs_df)
+# summary(aov_pos)
 
 ```
 

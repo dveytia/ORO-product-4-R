@@ -1,9 +1,10 @@
 "","Variable name","Relative influence"
-"time_scale","Time scale",51.4203644401861
-"continent","Continent",35.1683397492202
-"spatial_scale","Spatial scale",4.84983045766449
-"governance_indicator","Governance indicator",4.09397310021542
-"oro_type","Oro type",3.53260620133428
-"rules_of_law","Rules of law",0.619317326649206
-"governance_body","Governance body",0.2891680681806
-"procedural_equity","Procedural equity",0.0264006565497341
+"time_scale","Time scale",50.6845173382407
+"continent","Continent",19.7561498842386
+"fishery_vulnerability","Fishery vulnerability",16.7959698722202
+"spatial_scale","Spatial scale",5.58628017667106
+"oro_type","Oro type",3.22376364430073
+"governance_indicator","Governance indicator",2.84062928283527
+"rules_of_law","Rules of law",0.770230489783491
+"governance_body","Governance body",0.337250939343356
+"procedural_equity","Procedural equity",0.00520837236658964

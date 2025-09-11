@@ -253,3 +253,12 @@ relevantArticlesCid %>%
 ```
 
 
+```{r count the number of article full texts retrieved}
+fullTextPdf <- dir(here::here("data/raw-data/full-texts_v1"))
+fullTextPdf <- as.numeric(stringr::str_extract(fullTextPdf, "^[0-9]+"))
+fullTextPdf <- na.omit(fullTextPdf)
+length(unique(fullTextPdf)) # 212
+```
+
+
+

@@ -1,22 +1,11 @@
 
 ## FUNCTIONS FOR FORMATTING DEEPSEEK CODING RESULTS
 
-# rename_labels <- function(df, label_map){
-#   for(v in 1:length(label_map)){
-#     varname = names(label_map)[v]
-#     for(l in 1:length(label_map[[v]])){
-#       old <- label_map[[v]][l]
-#       new <- names(label_map[[v]])[l]
-#       df[,varname] <- gsub(old,new, df[,varname])
-#     }
-#   }
-#   return(df)
-# }
-# 
-# 
 
 
-
+## Rename label values from a mapping list
+#' where label_map is a named list, each named element corresponds to the column name in df
+#' and each list element is a named vector of c("new label" = "old label")
 rename_labels <- function(df, label_map) {
   require(stringi)
   for (varname in names(label_map)) {
