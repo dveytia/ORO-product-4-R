@@ -722,6 +722,61 @@ oroTypeDf_wide[is.na(oroTypeDf_wide)] <- 0
 
 intCols <- rev(oroTypeAes$levels)
 
+
+## Compute pairwise overlaps
+pairwise_interactions <- expand.grid(intCols,intCols)
+pairwise_interactions <- matrix(nrow=length(intCols), ncol=length(intCols),
+                                dimnames = list(intCols, intCols))
+
+for(i in 1:nrow(pairwise_interactions)){
+  for(j in 1:ncol(pairwise_interactions)){
+    if(i == j){
+      pairwise_interactions[i,j] <- NA
+    }else{
+      pairwise_interactions[i,j] <- sum(
+        oroTypeDf_wide[[rownames(pairwise_interactions)[i]]] == 1 &
+          oroTypeDf_wide[[colnames(pairwise_interactions)[j]]] == 1 
+      )
+    }
+  }
+}
+# pairwise_interactions[upper.tri(pairwise_interactions)] <- NA
+
+pairwise_interactions <- as.data.frame(pairwise_interactions)%>%
+  tibble::rownames_to_column(var="ORO 1")%>%
+  pivot_longer(cols = any_of(intCols), names_to = "ORO 2", values_to = "value")%>%
+  mutate(
+    `ORO 1` = factor(
+      `ORO 1`, levels = oroTypeAes$levels
+    ),
+    `ORO 2` = factor(
+      `ORO 2`, levels = oroTypeAes$levels
+    )
+  )
+
+pairwise_interactions_ggp <- ggplot(pairwise_interactions,
+                                    aes(x=`ORO 1`, y=`ORO 2`, fill=value))+
+  geom_tile(aes(fill=value))+
+  geom_text(aes(label=value), size=2)+
+  scale_fill_distiller(palette = "Blues", direction=1)+
+  theme_minimal()+
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+    axis.title = element_blank()
+  )
+
+pairwise_interactions_ggp
+
+ggsave(
+  here::here("figures/supplemental/pairwise_oroInteractions_heatmap.png"),
+  plot= pairwise_interactions_ggp,
+  width = 4.5, height=4,
+  dpi=600
+)
+
+
+
 # oroTypeDf_wide[intCols] = oroTypeDf_wide[intCols] == 1 # convert to bool
 us_ggp <- UpSetR::upset(oroTypeDf_wide,
               sets = intCols, keep.order = TRUE,
@@ -1326,7 +1381,7 @@ axes:
 - outcomes (one axis for each type)
 
 
-```{r spider plot not separated by evidence type}
+```{r spider plot not separated by evidence type axis 0 to 1}
 
 # calculate outcomes
 oroOutcomes <- expand_labels_with_weight(df = studyResults, id_col = article_outcome_id, list_col = oro_type) %>%
@@ -1579,7 +1634,7 @@ spiderAxes_df <- join_oro_with_multilabels(
   mutate(
     across(
       where(is.numeric),
-      ~rescale_signed(.x)
+      ~scales::rescale(.x) # rescale_signed(.x)
     )
   )%>%
   ungroup()
@@ -1593,8 +1648,7 @@ require(ggiraph)
 
 
 allAxisCols <- colnames(spiderAxes_df)[-c(1,6)]
-allAxisColsLabs <- c("Governance\nbody\nscale","Law","Spatial\nscale","Time\nscale","log(+/-)","% Positive")
-allAxisColsLabs <- c("Governance\nbody\nscale","Law","Spatial\nscale","Time\nscale","% Positive")
+allAxisColsLabs <- c("Governance\nbody\nscale","Law","Spatial\nscale","Time\nscale","% Adaptive")
 
 ymn <- floor(min(unlist(c(spiderAxes_df[,allAxisCols])), na.rm=T))
 ymx <- ceiling(max(unlist(c(spiderAxes_df[,allAxisCols])), na.rm=T))
@@ -1664,6 +1718,9 @@ ggRad <- ggRadar(data = spiderAxes_df %>% select(-mean_pnratio), aes(facet = oro
 ggRad
 
 
+
+
+
 ggsave(
   here::here("figures/supplemental/radar_plot_oro_noEvidenceType.pdf"),
   ggRad,
@@ -1672,7 +1729,84 @@ ggsave(
 
 
 
+```
 
+```{r Petal plot}
+
+
+petal_df <- spiderAxes_df %>% 
+  select(-mean_pnratio) %>%
+  pivot_longer(cols = c("governance_body", "rules_of_law", "spatial_scale", "time_scale","prop_positive"), names_to = "category", values_to = "value") %>%
+  mutate(
+    category = factor(
+      category, 
+      levels = c("governance_body", "rules_of_law", "spatial_scale", "time_scale","prop_positive"),
+      labels = allAxisColsLabs
+    )
+  )
+
+# Label positions: use max value per category so labels are outside all petals
+label_df <- petal_df %>%
+  group_by(category) %>%
+  summarise(value = max(value)) %>%
+  mutate(id = as.numeric(factor(category))) %>%
+  mutate(angle = 90 - 360 * (id - 0.5) / n() + 90) %>%
+  mutate(angle = ifelse(angle > 90 & angle < 270 | angle < -90, angle + 180, angle),
+           hjust = 0.5, 
+         )
+
+
+petal_ggp <- ggplot(petal_df, aes(x = category, y = value, fill = category)) +
+  facet_wrap(vars(oro_type), labeller = label_wrap_gen(width=30))+
+  geom_col(width = 1, color = "white") +
+  # # labels
+  # geom_text(data = label_df,
+  #           aes(x = category, y = value + 0.5, 
+  #               label = category, angle = angle, hjust=hjust),
+  #           inherit.aes = FALSE, size = 2) +
+  coord_polar(clip = "off") +
+  scale_y_continuous(
+    # limits = c(ymn, ymx),
+    breaks = grid_lines
+  )+
+  geom_text(
+    data = data.frame(
+      x=rep(0, length(grid_lines)-1),
+      y=grid_lines[2:(length(grid_lines))]
+    ),
+    aes(x=x, y=y, label=y),
+    size=2,
+    inherit.aes = FALSE
+  )+
+  scale_fill_brewer(palette = "Set2")+
+  theme_minimal()+
+  theme(
+    legend.position = "none",
+    axis.text.y = element_blank(),
+    axis.text.x = element_text(margin = margin(t=20), vjust=0),
+    strip.text = element_text(size=9),
+    axis.title = element_blank(),
+    # panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_line(colour = "lightgrey", linewidth = 0.5),
+  )
+
+
+## Save plot
+
+ggsave(
+  here::here("figures/supplemental/petal_plot_oro_noEvidenceType.png"),
+  petal_ggp,
+  width = 6, height = 7.5, dpi=600
+)
+
+ggsave(
+  here::here("figures/supplemental/petal_plot_oro_noEvidenceType.pdf"),
+  petal_ggp,
+  width = 6, height = 7.5
+)
+```
+
+```{r radar plot no evidence type axis on quantile}
 
 ## Version where axis is on quartile
 spiderAxes_df <- join_oro_with_multilabels(
@@ -1933,7 +2067,7 @@ ggsave(
 
 
 
-```{r bar plot version instead of radar plot}
+```{r remove -- bar plot version instead of radar plot}
 
 # calculate outcomes
 oroOutcomes <- expand_labels_with_weight(df = studyResults, id_col = article_outcome_id, list_col = oro_type) %>%
@@ -2109,7 +2243,7 @@ summary(spiderAxes_df)
 
 
 allAxisCols <- colnames(spiderAxes_df)[colnames(spiderAxes_df) != "oro_type"]
-allAxisColsLabs <- c("Governance scale","Rule of law","Spatial scale","Time scale","% Positive outcomes")
+allAxisColsLabs <- c("Governance scale","Rule of law","Spatial scale","Time scale","% Adaptive outcomes")
 
 ymn <- floor(min(unlist(c(spiderAxes_df[,allAxisCols])), na.rm=T))
 ymx <- ceiling(max(unlist(c(spiderAxes_df[,allAxisCols])), na.rm=T))
@@ -3324,6 +3458,7 @@ gbm_plot_list <- lapply(1:nrow(gbm_summary), function(i) {
     pd_data <- plot.gbm(gbm_fit, var_name, n.trees = best.iter, return.grid = TRUE) %>%
       mutate(
         x = as.numeric(paste0(!!var_name_sym))
+        
       )%>%
       arrange(!!var_name_sym)
     
@@ -3337,7 +3472,7 @@ gbm_plot_list <- lapply(1:nrow(gbm_summary), function(i) {
     )
     
     # Create ggplot
-    ggplot(pd_data, aes(x = x, y = y)) +
+    ggplot(pd_data, aes(x = x, y = prob)) +
       geom_ribbon(
         data = sample_dens,
         aes(x=x, ymax = density_scaled),
@@ -3371,7 +3506,7 @@ gbm_plot_list <- lapply(1:nrow(gbm_summary), function(i) {
     
     # recalculate counts of n articles from original data ?
     for(s in 1:nrow(n_samples)){
-      n_samples$Freq[s] <- sum(grepl(as.character(n_samples[s,var_name]), codedVars[[var_name]]))
+      n_samples$Freq[s] <- sum(grepl(as.character(n_samples[s,var_name]), codedVars[[var_name]], fixed = TRUE))
     }
     
   
@@ -3425,7 +3560,8 @@ combined_gbm_plot <- wrap_plots(gbm_plot_list, ncol = 3) +
 ggsave(here::here("figures/supplemental/gbm_partial_dependence_plots.pdf"),
        combined_gbm_plot, width = 10, height = 11)
 
-
+ggsave(here::here("figures/supplemental/gbm_partial_dependence_plots.png"),
+       combined_gbm_plot, width = 10, height = 11, dpi=600)
 
 
 ## Assess on the test set
