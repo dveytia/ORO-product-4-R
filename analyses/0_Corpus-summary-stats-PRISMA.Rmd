@@ -1,0 +1,170 @@
+---
+title: "0_Corpus-summary-stats"
+author: "Devi Veytia"
+date: "2023-10-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This document summarizes the data used to train the distilBERT classifiers for Safe Fish and Implemented, and the prediction results
+
+
+```{r set up libraries}
+## Load libraries
+library(dplyr)
+library(dbplyr)
+library(R.utils)
+library(RSQLite)
+library(ggplot2)
+library(metagear)
+```
+
+
+# Corpus summary
+
+```{r summarise the abstract and text screening}
+dbcon <-RSQLite::dbConnect(RSQLite::SQLite(), 
+                           dbname = here::here("data/raw-data/product4.sqlite"),
+                           create=FALSE)
+
+codedData <- tbl(dbcon, "codedData") %>% collect()
+oro_branch <- tbl(dbcon, "oro_branch") %>% collect()
+
+print("Coded Safe fish data")
+table(codedData$safe_fish)
+#   0   1 
+# 865  91 
+
+print("Coded implemented data for Societal branch")
+table(codedData$oro_development_stage.Implemented_continued_assessment[
+  codedData$oro_branch.Societal ==1
+])
+#   0   1 
+# 163 160 
+
+print("Unseen corpus of Societal branch OROs")
+sum(0.5 <= oro_branch$oro_branch.Societal_mean) 
+# 4899
+# NB this number is < then all societal OROs counted in original systematic map, as articles relevant for 2 ORO types were counted twice. 
+
+# Predictions summary
+relevantdedups <- tbl(dbcon, "relevantdedups_p4") %>%
+  collect()
+
+print("Number predicted Safe Fish")
+sum(0.5 <= relevantdedups$safe_fish_mean) 
+# 824
+
+print("Number predicted implemented")
+sum(0.5 <= relevantdedups$implemented_mean)
+# 1593
+
+print("Number predicted safe fish AND implemented")
+n_search <- sum(0.5 <= relevantdedups$implemented_mean &
+      0.5 <= relevantdedups$safe_fish_mean)
+n_search
+# 444
+
+
+
+## Load manual screening results
+abs_screen <- tbl(dbcon, "safe_fish_manual_screen") %>% collect()
+
+
+print("Manual abstract screening results")
+n_abs_screen <- table(abs_screen$include)
+n_abs_screen
+#   0   1 
+# 228 216 
+
+
+
+## Summarise full text screening and coding
+
+print("Number of full texts retrieved")
+fullTextPdf <- dir(here::here("data/raw-data/full-texts_v1"))
+fullTextPdf <- as.numeric(stringr::str_extract(fullTextPdf, "^[0-9]+"))
+fullTextPdf <- na.omit(fullTextPdf)
+n_fullTextRetrieved <- length(unique(fullTextPdf)) # 212
+n_fullTextRetrieved
+
+
+# Load in manual coding results
+codedVars_test <- readxl::read_excel(
+  here::here("outputs/coding-answers-human/testList_answers_df_v9.2_human.xlsx")
+) %>%
+  filter(!(id %in% c(250635)))
+
+codedVars_all <- readxl::read_excel(
+  here::here("outputs/coding-answers-human/unseen_answers_df_noTestList_v9.2_human.xlsx")
+)
+
+cvcols <- intersect(colnames(codedVars_test), colnames(codedVars_all))
+codedVars <- codedVars_test %>%
+  select(all_of(cvcols)) %>%
+  bind_rows(
+    codedVars_all %>% select(all_of(cvcols))
+  ) 
+
+print("Number of articles retained after DeepSeek screen")
+n_deepSeek_screen <- nrow(codedVars)
+n_deepSeek_screen 
+# 150
+
+
+
+print("Number included after full text")
+n_fullText <- sum(codedVars$include)
+n_fullText
+# 79
+rm(codedVars)
+```
+
+```{r PRISMA plot}
+n_search
+n_abs_screen
+n_deepSeek_screen
+n_fullText
+
+
+PRISMAFlow <- c(
+  # Start -- N safe fish implemented
+  paste("START_PHASE:", 
+        format(n_search, format = "d", big.mark=","),
+        "predicted relevant\nfrom distilBERT"),
+  
+  # Manual abstract screening
+  paste(format(n_abs_screen["1"], format = "d", big.mark=","),"abstracts included\n(manual)"),
+  paste("EXCLUDE_PHASE:", format(n_abs_screen["0"], format = "d", big.mark=","),"abstracts excluded\n(manual)"),
+  
+  # Full text retrieval 
+  paste(format(n_fullTextRetrieved, format = "d", big.mark=","),"Full text retrieved"),
+  paste("EXCLUDE_PHASE:", format(n_abs_screen["1"]-n_fullTextRetrieved, format = "d", big.mark=","),"Full text not found"),
+  
+  # Deepseek full text screening
+  paste(format(n_deepSeek_screen, format = "d", big.mark=","),"Full text included\n(DeepSeek)"),
+  paste("EXCLUDE_PHASE:",
+        format(n_fullTextRetrieved-n_deepSeek_screen, format = "d", big.mark=","),"Excluded\n(DeepSeek)"),
+  
+  # Manual full text screening
+  paste(format(n_fullText, format = "d", big.mark=","),"Full text included\n(manual)"),
+  paste("EXCLUDE_PHASE:",
+        format(n_deepSeek_screen-n_fullText, format = "d", big.mark=","),"Excluded\n(manual)")
+)
+
+w <- 12
+h <- w*0.7
+
+png(here::here("figures/supplemental/PRISMA_diagram.png"), width = w, height = h,units = "in",res = 600)
+PRISMAFlowChart <- metagear::plot_PRISMA(PRISMAFlow, 
+                                         design = c(E = "lightcoral", flatArrow = TRUE),
+                                         excludeDistance = 0.8, colWidth = 50)
+dev.off()
+
+```
+
+
+

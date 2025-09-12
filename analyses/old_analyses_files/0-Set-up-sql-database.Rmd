@@ -42,6 +42,11 @@ all_db <- RSQLite::dbConnect(RSQLite::SQLite(),
                     here::here("data","raw-data","all_tables_v1.sqlite"), 
                                 create=FALSE)
 dedups <- tbl(all_db, "uniquerefs") %>% collect() # change
+codedData <- tbl(all_db,"allCodingSimplifiedVariablesMore") %>%
+  collect() %>%
+  select(analysis_id, title, abstract, keywords, year, contains("oro_branch"),
+         safe_fish, safe_space, contains("oro_development_stage")) %>%
+  mutate(across(where(is.numeric), ~ifelse(.x>1, 1, .x)))
 dbDisconnect(all_db)
 
 # Predictions
@@ -101,7 +106,7 @@ dbWriteTable(dbcon, "safe_fish", predFish, overwrite = FALSE, append = FALSE)
 dbWriteTable(dbcon, "safe_space", predSpace, overwrite = FALSE, append = FALSE)
 dbWriteTable(dbcon, "data_type", predDataType, overwrite = FALSE, append = FALSE)
 dbWriteTable(dbcon, "implemented", predImplemented, overwrite = FALSE, append = FALSE)
-
+dbWriteTable(dbcon, "codedData", codedData, overwrite=FALSE, append=FALSE)
 
 dbDisconnect(dbcon)
 

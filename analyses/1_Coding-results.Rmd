@@ -1,5 +1,5 @@
 ---
-title: "1.0_exploreVisualizeDeepSeekLabels"
+title: "1_Coding-results"
 author: "Devi Veytia"
 date: "2025-08-04"
 output: html_document
@@ -534,29 +534,20 @@ Spider plot with the following axes (each axis is a weighted composite metric of
 - Outcomes: maybe relative # positive outcomes for each outcome type?
 
 ```{r summarise screening results}
-
-# Load answers from training screening and all screening and combine
-train <- readxl::read_excel(here::here("data/derived-data/screen-train/ArticleAnswers_train_set1.xlsx"))
-all <- readxl::read_excel(here::here("data/derived-data/screen-all/ArticleAnswers_conflictsResolved_2024-03-27.xlsx"))
-df <- rbind(train, all)
-df <- df %>%
-  mutate(sysrev_id = as.numeric(`Article ID`),
-         include = as.logical(Include)) %>%
-  rename(title = Title) 
-
-df_unique <- readr::read_csv(here::here("data/derived-data/screen-all/ArticleAnswers_conflictsResolved_2024-03-27_deduplicated.csv"))
-df_unique$label <- NULL
-df_unique$matches <- NULL
-
-df_unique <- df_unique %>%
-  left_join(df %>% dplyr::select(sysrev_id, `Exclusion criteria`), by = c("sysrev_id"))
+## Load manual screening results
+dbcon <-RSQLite::dbConnect(RSQLite::SQLite(), 
+                           dbname = here::here("data/raw-data/product4.sqlite"),
+                           create=FALSE)
+abs_screen <- tbl(dbcon, "safe_fish_manual_screen") %>% collect()
+dbDisconnect(dbcon)
 
 
+## Count the reasons for exclusion and format into a table
 keyLabels <- c("Population","Intervention","Literature review","Outcome")
 keyLabelCounts <- rep(NA, length(keyLabels))
 
 for(l in 1:length(keyLabels)){
-  keyLabelCounts[l] <- sum(grepl(keyLabels[l], df_unique$`Exclusion criteria`, ignore.case = TRUE))
+  keyLabelCounts[l] <- sum(grepl(keyLabels[l], abs_screen$`Exclusion criteria`, ignore.case = TRUE))
 }
 
 sumdf <- rbind(
@@ -589,9 +580,9 @@ screeningSummary_ggp
 
 
 ggsave(
-  filename = here::here("figures/supplemental/abstract_screen_excl_counts.pdf"),
+  filename = here::here("figures/supplemental/abstract_screen_excl_counts.png"),
   plot = screeningSummary_ggp,
-  width = 5, height=4
+  width = 5, height=4, dpi=600
 )
 ```
 

@@ -79,7 +79,7 @@ p4_db <- RSQLite::dbConnect(RSQLite::SQLite(),
                     here::here("data","raw-data","product4.sqlite"), 
                                 create=FALSE)
 screenRecs <- tbl(p4_db, "trainRecsSample") %>% collect()
-dbDisconnect(p4_db)
+
 
 
 df_unique <- fuzzyjoin::stringdist_full_join(df_unique, 
@@ -93,8 +93,17 @@ df_unique <- df_unique %>%
   select(sysrev_id, analysis_id, include, title.y, abstract, `Exclusion criteria`, doi, year) %>%
   rename(title = title.y)  
 
+df_unique<- df_unique%>%
+  distinct(analysis_id, .keep_all = TRUE)
+
 summary(df_unique)
 nrow(df_unique)
+
+# write to sql
+dbWriteTable(p4_db, "safe_fish_manual_screen", df_unique, overwrite = FALSE, append = FALSE)
+
+
+dbDisconnect(p4_db)
 
 ```
 
