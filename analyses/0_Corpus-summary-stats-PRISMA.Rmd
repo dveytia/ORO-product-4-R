@@ -27,11 +27,12 @@ library(metagear)
 
 ```{r summarise the abstract and text screening}
 dbcon <-RSQLite::dbConnect(RSQLite::SQLite(), 
-                           dbname = here::here("data/raw-data/product4.sqlite"),
+                           dbname = here::here("data/raw-data/safe_fish.sqlite"),
                            create=FALSE)
 
 codedData <- tbl(dbcon, "codedData") %>% collect()
 oro_branch <- tbl(dbcon, "oro_branch") %>% collect()
+
 
 print("Coded Safe fish data")
 table(codedData$safe_fish)
@@ -108,6 +109,41 @@ codedVars <- codedVars_test %>%
   bind_rows(
     codedVars_all %>% select(all_of(cvcols))
   ) 
+
+## Write test list articles to outputs
+testList_articles <- relevantdedups %>%
+  right_join(codedVars_test, by= c("analysis_id"="id"))%>%
+  select(
+    include, author, title, source_title, year, doi
+  )%>%
+  rename(
+    Publication = source_title
+  )
+colnames(testList_articles) <- stringr::str_to_sentence(colnames(testList_articles))
+
+
+##  write included coded articles to outputs
+incl_articles <- relevantdedups %>%
+  filter(analysis_id %in% codedVars$id[codedVars$include])%>%
+  select(
+    author, title, source_title, year, doi
+  )%>%
+  rename(
+    Publication = source_title
+  )
+colnames(incl_articles) <- stringr::str_to_sentence(colnames(incl_articles))
+
+# ## Write file
+# writexl::write_xlsx(
+#   incl_articles,
+#   here::here("outputs/included_articles.xlsx")
+# )
+# 
+# writexl::write_xlsx(
+#   testList_articles,
+#   here::here("outputs/test_list_articles.xlsx")
+# )
+
 
 print("Number of articles retained after DeepSeek screen")
 n_deepSeek_screen <- nrow(codedVars)

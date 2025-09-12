@@ -9,6 +9,8 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+
+# Set up
 ```{r set up libraries}
 ## Load libraries
 library(dplyr)
@@ -134,20 +136,6 @@ cidAes <- data.frame(
 ```
 
 
-```{r load relevant articles - not needed?, eval = FALSE}
-# connect to database
-p4_db <- RSQLite::dbConnect(RSQLite::SQLite(),
-                    here::here("data","raw-data","product4.sqlite"), 
-                                create=FALSE)
-
-# Collect table
-relevantdedups <- tbl(p4_db, "relevantdedups_p4") %>%
-  collect()
-
-# Disconnect the database
-dbDisconnect(p4_db)
-
-```
 
 
 ```{r load in coding results}
@@ -161,7 +149,7 @@ codedVars_all <- readxl::read_excel(
   here::here("outputs/coding-answers-human/unseen_answers_df_noTestList_v9.2_human.xlsx")
 )
 
-cvcols <- intersect(colnames(codedVars_test), colnames(codedVars_all))
+cvcols <- base::intersect(colnames(codedVars_test), colnames(codedVars_all))
 codedVars <- codedVars_test %>%
   select(all_of(cvcols)) %>%
   bind_rows(
@@ -208,14 +196,14 @@ codedVars <- rename_labels(codedVars, label_map)
 
 # result level data
 studyResults_test <- readxl::read_excel(
-  here::here("outputs/coding-answers-human/testList_answers_df_studyResults_v9_human.xlsx")
+  here::here("outputs/coding-answers-human/testList_answers_df_studyResults_v9.2_human.xlsx")
 )%>%
   filter(!(id %in% c(250635)))
 
 studyResults_all <- readxl::read_excel(
-  here::here("outputs/coding-answers-human/unseen_answers_df_studyResults_noTestList_v9_human.xlsx")
+  here::here("outputs/coding-answers-human/unseen_answers_df_studyResults_noTestList_v9.2_human.xlsx")
 )
-cols <- intersect(colnames(studyResults_test), colnames(studyResults_all))
+cols <- base::intersect(colnames(studyResults_test), colnames(studyResults_all))
 
 studyResults <- studyResults_test %>%
   select(all_of(cols)) %>%
@@ -308,6 +296,9 @@ oro_df <- institutional %>%
 
 ```
 
+
+
+
 ```{r match country with external data}
 
 id_country <- expand_labels_with_weight(codedVars, id, country) %>%
@@ -390,136 +381,7 @@ sum(anti_id_country_data$iso3c %in% id_country_data$iso3c) # 0
 ```
 
 
-```{r maps of wbi governance indicators}
-source(here::here("R", "functions_to_format.R")) # all functions needed to format data
-source(here::here("R", "functions_to_plot.R")) # all functions needed to plot data
-
-
-wbi_all <- readxl::read_excel(
-  here::here("data/raw-data/external/worldbank_worldwide-governance-indicators/wgidataset.xlsx")
-)%>%
-  group_by(code, indicator) %>%
-  summarise(
-    year_sum = sum(as.numeric(estimate), na.rm=T),
-    year_mean = mean(as.numeric(estimate), na.rm=T)
-  ) %>%
-  mutate(
-    sum_scaled = scales::rescale(year_sum),
-    mean_scaled = scales::rescale(year_mean)
-  ) %>%
-  ungroup()
-
-wbi_combined <- wbi_all %>%
-  group_by(code) %>%
-  summarise(
-    governance_indicator_sum = sum(sum_scaled, na.rm=T),
-    governance_indicator_mean = sum(mean_scaled, na.rm=T)
-  ) %>%
-  mutate(
-    indicator = "Combined metric"
-  )
-  
-
-
-# combined data frame
-wbi_plt_df <- wbi_all %>%
-  rename(value = mean_scaled)%>%
-  select(code, indicator, value) %>%
-  bind_rows(
-    wbi_combined %>% 
-      rename(value = governance_indicator_mean) %>%
-      select(code, indicator, value)
-  ) %>%
-  pivot_wider(
-    id_cols = code, names_from = indicator, values_from = value
-  )
-
-
-indicators <- c(
-  "cc" = "Control of corruption",
-  "ge" = "Government effectiveness",
-  "pv" = "Political stability & absence of violence/terrorism",
-  "rl" = "Rule of law",
-  "rq" = "Regulatory quality",
-  "va" = "Voice and accountability",
-  "Combined metric" = "Combined metric"
-)
-
-
-
-## read in external data
-PROJ = "+proj=robin +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
-world_shp <- ne_countries(returnclass = "sf", scale="large")
-
-# Join in plotting data (fill and point)
-data_map <- world_shp %>%
-  dplyr::full_join(wbi_plt_df, by = c("iso_a3"="code")) %>%
-  sf::st_transform(crs = PROJ)
-
-# reproject
-data_map <- try_format_data2map(input_args = list(
-  data = data_map,
-  PROJ = PROJ
-  )
-)
-
-
-## Plot
-wbi_ggps <- list()
-
-for(i in 1:length(indicators)){
-  
-  tmp_map <- ggplot2::ggplot() +
-      ## Country fill
-      ggplot2::geom_sf(data    =  data_map$data, 
-                       mapping = ggplot2::aes(fill     = !! sym(names(indicators)[i]),
-                                              geometry = geometry), 
-                       color   = "black", 
-                       size    = 0.1) +
-      
-      ggplot2::scale_fill_viridis_c(
-        name = str_wrap(indicators[i], width = 30)
-      )+
-      # Bounding box
-      ggplot2::geom_sf(data   = data_map$box, 
-                       colour = "black", 
-                       fill   = NA, 
-                       size   = 0.1) +
-      ## Add latitude and longitude labels
-      ggplot2::geom_text(data = data_map$lat_text, mapping = ggplot2::aes(x = X.prj2-1*10e5, y = Y.prj,          label = lbl), color = "grey20", size = 1.5) +
-      ggplot2::geom_text(data = data_map$lon_text, mapping = ggplot2::aes(x = X.prj,         y = Y.prj-0.5*10e5, label = lbl), color = "black",  size = 1.5) + 
-      
-      ggplot2::theme_void() +
-    # Themes
-    theme(axis.title.x     = element_blank(),
-          axis.title.y     = element_blank(),
-          plot.margin = unit(c(0.1,0.1,0.2,0.1),"cm"),
-          legend.title.position = "top",
-          legend.position = "bottom"
-          )
-  
-
-    # tmp_map
-  wbi_ggps[[i]] <- tmp_map
-  
-  
-}
-
-
-## combine 
-require(patchwork)
-combined_plots <- wrap_plots(
-  wbi_ggps, ncol = 2
-)+
-  plot_annotation(tag_levels = "a")
-
-
-ggsave(here::here("figures/supplemental/all_wbi_indicator_maps.png"),
-       combined_plots, width = 8, height = 12, dpi = 600)
-
-
-```
-
+# Number of OROs
 Figure summary
 - infographic with barplot showing # papers for each ORO type, stacked color = continent (weighted)
 - climatic impact driver ~ ? maybe just a barplot?
@@ -536,7 +398,7 @@ Spider plot with the following axes (each axis is a weighted composite metric of
 ```{r summarise screening results}
 ## Load manual screening results
 dbcon <-RSQLite::dbConnect(RSQLite::SQLite(), 
-                           dbname = here::here("data/raw-data/product4.sqlite"),
+                           dbname = here::here("data/raw-data/safe_fish.sqlite"),
                            create=FALSE)
 abs_screen <- tbl(dbcon, "safe_fish_manual_screen") %>% collect()
 dbDisconnect(dbcon)
@@ -586,6 +448,48 @@ ggsave(
 )
 ```
 
+
+```{r summarise DeepSeek F1 scores}
+f1Scores <- readxl::read_excel(
+  here::here("outputs/testList_f1_scores_v9.xlsx")
+)
+
+f1_stats_df <- data.frame(
+      xmn = quantile(f1Scores$`F1 label`, probs = 0.25),
+      xmx = quantile(f1Scores$`F1 label`, probs = 0.75),
+      ymn=-Inf,
+      ymx=Inf
+    )
+
+f1scores_ggp <- ggplot(data=f1Scores, aes(`F1 label`))+
+  geom_density()+
+  geom_vline(xintercept = mean(f1Scores$`F1 label`), col="red")+
+  geom_text(
+    aes(label=scales::number(mean(f1Scores$`F1 label`), accuracy=0.01), x=mean(f1Scores$`F1 label`)), hjust=1,y=0.5, check_overlap = TRUE
+    col="red"
+  )+
+  geom_rect(
+    data=f1_stats_df,
+    aes(xmin=xmn, xmax=xmx, ymin=ymn, ymax =ymx),
+    fill="grey",alpha=0.5, inherit.aes=FALSE
+  )+
+  theme_minimal()
+
+f1scores_ggp 
+
+ggsave(
+  here::here("figures/supplemental/f1_scores_DeepSeek.png"),
+  f1scores_ggp ,
+  width=5, height=4, dpi=600
+)
+
+# Median label F1
+quantile(f1Scores$`F1 label`, probs = 0.5) # 0.748
+
+# Mean label F1
+mean(f1Scores$`F1 label`) #0.658
+
+```
 
 ```{r number of OROs per paper}
 
@@ -784,7 +688,7 @@ dev.off()
 
 
 
-
+# Coded metadata plots
 
 ```{r continent oro two barplots}
 
@@ -1372,7 +1276,7 @@ axes:
 - outcomes (one axis for each type)
 
 
-```{r spider plot not separated by evidence type axis 0 to 1}
+```{r Petal plot of weighted means per axis scaled 0 to 1}
 
 # calculate outcomes
 oroOutcomes <- expand_labels_with_weight(df = studyResults, id_col = article_outcome_id, list_col = oro_type) %>%
@@ -1398,6 +1302,7 @@ totals <- oroOutcomes %>%
     total = sum(weight, na.rm=T)
   )
 
+# Calculate proportion positive outcomes
 propPosOutcomes <- oroOutcomes %>%
   filter(result_effect == "Positive") %>%
   group_by(oro_type) %>%
@@ -1411,45 +1316,6 @@ propPosOutcomes <- oroOutcomes %>%
     prop_positive = n_positive / total
   ) 
   
-
-tradeOffRatio <- expand_labels_with_weight(df = oroOutcomes, id_col = article_outcome_id, list_col = result_type) %>%
-  left_join(oroOutcomes %>% select(article_outcome_id, id, oro_type, result_effect, weight) %>% rename(oro_weight = weight),
-            relationship = "many-to-many") %>%
-  rename(
-    result_type = label,
-    result_type_weight = weight
-  ) %>%
-  group_by(
-    id, oro_type, result_effect, result_type, 
-  ) %>%
-  summarise(
-    weightedSum = sum(oro_weight*result_type_weight, na.rm=T)
-  )%>%
-  pivot_wider(
-    values_from = weightedSum,
-    names_from = result_effect,
-    values_fill = 0.00001
-  ) %>%
-  group_by(oro_type, id) %>%
-  summarise(
-    n_pos = sum(Positive),
-    n_neg = sum(Negative)
-  )%>%
-  mutate(
-    log_pos_neg_ratio = log(n_pos/n_neg)
-  )
-
-
-
-avgTradeOffs <- tradeOffRatio%>%
-  group_by(oro_type) %>%
-  summarise(
-    mean_pnratio = mean(log_pos_neg_ratio, na.rm=T)
-  )%>%
-  ungroup()
-  # mutate(
-  #   mean_pnratio = rescale_signed(mean_pnratio)
-  # )
 
 
 
@@ -1477,106 +1343,8 @@ factor_level_lookup <- bind_rows(
   })
 )
 
-rescale_signed <- function(x) {
-  # Start with all NA to preserve missing values
-  out <- rep(NA_real_, length(x))
-  
-  # Separate positives and negatives
-  neg_idx <- which(x < 0 & !is.na(x))
-  pos_idx <- which(x > 0 & !is.na(x))
-  
-  # Rescale negatives to (-1, 0)
-  if (length(neg_idx) ==1){
-    out[neg_idx] <- -1
-  }else if (length(neg_idx) > 0) {
-    neg <- x[neg_idx]
-    out[neg_idx] <- -1 + (neg - min(neg, na.rm = TRUE)) /
-      (max(neg, na.rm = TRUE) - min(neg, na.rm = TRUE))
-  }
-  
-  # Rescale positives to (0, 1)
-  if (length(pos_idx) == 1){
-    out[pos_idx] <- 1
-  }else if (length(pos_idx) > 0) {
-    pos <- x[pos_idx]
-    out[pos_idx] <- (pos - min(pos, na.rm = TRUE)) /
-      (max(pos, na.rm = TRUE) - min(pos, na.rm = TRUE))
-  }
-  
-  # Keep zeros as 0
-  zero_idx <- which(x == 0 & !is.na(x))
-  out[zero_idx] <- 0
-  
-  out
-}
 
-
-
-
-
-spiderAxes_df <- join_oro_with_multilabels(
-  oro_df = oro_df,
-  codedVars = codedVars,
-  label_cols = c("governance_body", "rules_of_law", "spatial_scale", "time_scale"),
-  label_levels_list = factor_levels,
-  id_col = "id",
-  make_summary = FALSE
-) %>%
-  filter(!if_any(everything(), ~ grepl("None", .x))) %>%
-  mutate(
-    across(
-      where(is.factor),
-      ~droplevels(.x)
-    ) 
-  )%>%
-  pivot_longer(
-    cols = all_of(axisCols),   # melt only axis columns
-    names_to = "factor_name",  # column names become factor_name
-    values_to = "factor_level" # factor values become factor_level
-  )%>%
-  left_join(
-    factor_level_lookup, by = c("factor_name","factor_level")
-  ) %>%
-  # mutate(
-  #   weighted_axis = weight*factor_num
-  # ) %>%
-  # group_by(
-  #   id, oro_type, evidence_type, factor_name
-  # ) %>%
-  # summarise(
-  #   weighted_axis = sum(weighted_axis, na.rm=T)
-  # )%>%
-  group_by(
-    oro_type, factor_name
-  ) %>%
-  summarise(
-    weighted_axis = sum(factor_num, na.rm=T)/n()
-  )%>%
-  # summarise(
-  #   weighted_axis = mean(weighted_axis, na.rm=T)
-  # )%>%
-  pivot_wider(
-    names_from = factor_name,
-    values_from = weighted_axis
-  ) %>%
-  
-  # Join with outcomes data
-  left_join(avgTradeOffs, by = c("oro_type")) %>%
-  left_join(propPosOutcomes, by = c("oro_type")) %>%
-  select(-n_positive, -total) %>%
-  ungroup() %>%
-  mutate(
-    across(
-      where(is.numeric),
-      ~rescale_signed(.x)
-    )
-  )%>%
-  ungroup()
-
-
-
-## try 2 -- with weights
-spiderAxes_df <- join_oro_with_multilabels(
+petal_df <- join_oro_with_multilabels(
   oro_df = oro_df,
   codedVars = codedVars,
   label_cols = c("governance_body", "rules_of_law", "spatial_scale", "time_scale"),
@@ -1618,7 +1386,6 @@ spiderAxes_df <- join_oro_with_multilabels(
   ) %>%
   
   # Join with outcomes data
-  left_join(avgTradeOffs, by = c("oro_type")) %>%
   left_join(propPosOutcomes, by = c("oro_type")) %>%
   select(-n_positive, -total) %>%
   ungroup() %>%
@@ -1629,104 +1396,18 @@ spiderAxes_df <- join_oro_with_multilabels(
     )
   )%>%
   ungroup()
-summary(spiderAxes_df)
 
 
-require(ggradar)
-require(ggiraphExtra)
-require(ggiraph)
-
-
-
-allAxisCols <- colnames(spiderAxes_df)[-c(1,6)]
+# Format for ggplot
+allAxisCols <- axisCols
 allAxisColsLabs <- c("Governance\nbody\nscale","Law","Spatial\nscale","Time\nscale","% Adaptive")
 
-ymn <- floor(min(unlist(c(spiderAxes_df[,allAxisCols])), na.rm=T))
-ymx <- ceiling(max(unlist(c(spiderAxes_df[,allAxisCols])), na.rm=T))
+ymn <- floor(min(unlist(c(petal_df[,allAxisCols])), na.rm=T))
+ymx <- ceiling(max(unlist(c(petal_df[,allAxisCols])), na.rm=T))
 grid_lines <- pretty(c(ymn, ymx))
 
-evidencePal <- c("#253494","#41b6c4","#ffffcc")
 
-
-my_coord_radar <- function(theta = "x", start = 0, direction = 1, clip = "on") {
-  theta <- match.arg(theta, c("x", "y"))
-  r <- if (theta == "x") "y" else "x"
-  ggproto(
-    "CoordRadar",
-    ggplot2::CoordPolar,
-    theta = theta,
-    r = r,
-    start = start,
-    direction = sign(direction),
-    clip = clip,
-    is_linear = function(coord) TRUE
-  )
-}
-
-
-ggRad <- ggRadar(data = spiderAxes_df %>% select(-mean_pnratio), aes(facet = oro_type), rescale=FALSE,
-                 size=0.8, alpha = 0.3)+
-  facet_wrap(~oro_type, ncol=4, labeller = label_wrap_gen(width=30))+
-  scale_x_discrete(
-    breaks = allAxisCols,
-    labels = allAxisColsLabs
-  )+
-  scale_y_continuous(
-    # limits = c(ymn, ymx),
-    breaks = grid_lines
-  )+
-  scale_fill_manual(
-    breaks = oroTypeAes$levels,
-    values = oroTypeAes$col
-  )+
-  scale_color_manual(
-    breaks = oroTypeAes$levels,
-    values = rep("black", length(oroTypeAes$col))
-  )+
-  geom_text(
-    data = data.frame(
-      x=rep(0, length(grid_lines)-1),
-      y=grid_lines[2:(length(grid_lines))]
-    ),
-    aes(x=x, y=y, label=y),
-    size=2,
-    inherit.aes = FALSE
-  )+
-  labs(
-    col = "Evidence type",
-    fill = "Evidence type"
-  )+
-  my_coord_radar(clip="off")+
-  theme_minimal()+
-  theme(
-    legend.position = "none",
-    axis.text.y = element_blank(),
-    axis.text.x = element_text(margin = margin(t=20), vjust=0),
-    strip.text = element_text(size=9),
-    # panel.grid.minor.y = element_blank(),
-    panel.grid.major.y = element_line(colour = "lightgrey", linewidth = 0.5),
-  )
-ggRad
-
-
-
-
-
-ggsave(
-  here::here("figures/supplemental/radar_plot_oro_noEvidenceType.pdf"),
-  ggRad,
-  width = 7, height = 5
-)
-
-
-
-```
-
-```{r Petal plot}
-
-
-petal_df <- spiderAxes_df %>% 
-  select(-mean_pnratio) %>%
+petal_df <- petal_df %>% 
   pivot_longer(cols = c("governance_body", "rules_of_law", "spatial_scale", "time_scale","prop_positive"), names_to = "category", values_to = "value") %>%
   mutate(
     category = factor(
@@ -1781,6 +1462,8 @@ petal_ggp <- ggplot(petal_df, aes(x = category, y = value, fill = category)) +
     panel.grid.major.y = element_line(colour = "lightgrey", linewidth = 0.5),
   )
 
+petal_ggp
+
 
 ## Save plot
 
@@ -1797,492 +1480,8 @@ ggsave(
 )
 ```
 
-```{r radar plot no evidence type axis on quantile}
-
-## Version where axis is on quartile
-spiderAxes_df <- join_oro_with_multilabels(
-  oro_df = oro_df,
-  codedVars = codedVars,
-  label_cols = c("governance_body", "rules_of_law", "spatial_scale", "time_scale"),
-  label_levels_list = factor_levels,
-  id_col = "id",
-  make_summary = FALSE
-) %>%
-  filter(!if_any(everything(), ~ grepl("None", .x))) %>%
-  mutate(
-    across(
-      where(is.factor),
-      ~droplevels(.x)
-    ) 
-  )%>%
-  pivot_longer(
-    cols = all_of(axisCols),   # melt only axis columns
-    names_to = "factor_name",  # column names become factor_name
-    values_to = "factor_level" # factor values become factor_level
-  )%>%
-  left_join(
-    factor_level_lookup, by = c("factor_name","factor_level")
-  ) %>%
-  mutate(
-    weighted_axis = weight*factor_num
-  ) %>%
-  group_by(
-    id, oro_type, factor_name
-  ) %>%
-  summarise(
-    weighted_axis = sum(weighted_axis, na.rm=T)
-  )%>%
-  group_by(oro_type, factor_name)%>%
-  summarise(
-    weighted_axis = mean(weighted_axis, na.rm=T)
-  )%>%
-  pivot_wider(
-    names_from = factor_name,
-    values_from = weighted_axis
-  ) %>%
-  
-  # Join with outcomes data
-  left_join(avgTradeOffs, by = c("oro_type")) %>%
-  left_join(propPosOutcomes, by = c("oro_type")) %>%
-  select(-n_positive, -total) %>%
-  ungroup() %>%
-  mutate(
-    across(
-      where(is.numeric),
-      ~ntile(.x, n=5)
-    )
-  )%>%
-  ungroup()
-summary(spiderAxes_df)
 
 
-require(ggradar)
-require(ggiraphExtra)
-require(ggiraph)
-
-
-
-allAxisCols <- colnames(spiderAxes_df)[-c(1,6)]
-allAxisColsLabs <- c("Governance\nbody\nscale","Law","Spatial\nscale","Time\nscale","log(+/-)","% Positive")
-allAxisColsLabs <- c("Governance\nbody\nscale","Law","Spatial\nscale","Time\nscale","% Positive")
-
-ymn <- floor(min(unlist(c(spiderAxes_df[,allAxisCols])), na.rm=T))
-ymx <- ceiling(max(unlist(c(spiderAxes_df[,allAxisCols])), na.rm=T))
-grid_lines <- pretty(c(ymn, ymx))
-
-evidencePal <- c("#253494","#41b6c4","#ffffcc")
-
-
-my_coord_radar <- function(theta = "x", start = 0, direction = 1, clip = "on") {
-  theta <- match.arg(theta, c("x", "y"))
-  r <- if (theta == "x") "y" else "x"
-  ggproto(
-    "CoordRadar",
-    ggplot2::CoordPolar,
-    theta = theta,
-    r = r,
-    start = start,
-    direction = sign(direction),
-    clip = clip,
-    is_linear = function(coord) TRUE
-  )
-}
-
-
-ggRad <- ggRadar(data = spiderAxes_df %>% select(-mean_pnratio), aes(facet = oro_type), rescale=FALSE,
-                 size=0.8, alpha = 0.3)+
-  facet_wrap(~oro_type, ncol=4, labeller = label_wrap_gen(width=30))+
-  scale_x_discrete(
-    breaks = allAxisCols,
-    labels = allAxisColsLabs
-  )+
-  scale_y_continuous(
-    # limits = c(ymn, ymx),
-    breaks = grid_lines
-  )+
-  scale_fill_manual(
-    breaks = oroTypeAes$levels,
-    values = oroTypeAes$col
-  )+
-  scale_color_manual(
-    breaks = oroTypeAes$levels,
-    values = rep("black", length(oroTypeAes$col))
-  )+
-  geom_text(
-    data = data.frame(
-      x=rep(0, length(grid_lines)-1),
-      y=grid_lines[2:(length(grid_lines))]
-    ),
-    aes(x=x, y=y, label=y),
-    size=2,
-    inherit.aes = FALSE
-  )+
-  labs(
-    col = "Evidence type",
-    fill = "Evidence type"
-  )+
-  my_coord_radar(clip="off")+
-  theme_minimal()+
-  theme(
-    legend.position = "none",
-    axis.text.y = element_blank(),
-    axis.text.x = element_text(margin = margin(t=20), vjust=0),
-    strip.text = element_text(size=9),
-    # panel.grid.minor.y = element_blank(),
-    panel.grid.major.y = element_line(colour = "lightgrey", linewidth = 0.5),
-  )
-ggRad
-
-
-ggsave(
-  here::here("figures/supplemental/radar_plot_oro_noEvidenceType_quantileAxis.pdf"),
-  ggRad,
-  width = 7, height = 5
-)
-
-
-
-
-
-## Version without NBS
-spiderAxes_df <- join_oro_with_multilabels(
-  oro_df = oro_df,
-  codedVars = codedVars,
-  label_cols = c("governance_body", "rules_of_law", "spatial_scale", "time_scale"),
-  label_levels_list = factor_levels,
-  id_col = "id",
-  make_summary = FALSE
-) %>%
-  filter(!if_any(everything(), ~ grepl("None", .x))) %>%
-  mutate(
-    across(
-      where(is.factor),
-      ~droplevels(.x)
-    ) 
-  )%>%
-  pivot_longer(
-    cols = all_of(axisCols),   # melt only axis columns
-    names_to = "factor_name",  # column names become factor_name
-    values_to = "factor_level" # factor values become factor_level
-  )%>%
-  left_join(
-    factor_level_lookup, by = c("factor_name","factor_level")
-  ) %>%
-  mutate(
-    weighted_axis = weight*factor_num
-  ) %>%
-  group_by(
-    id, oro_type, factor_name
-  ) %>%
-  summarise(
-    weighted_axis = sum(weighted_axis, na.rm=T)
-  )%>%
-  group_by(oro_type, factor_name)%>%
-  summarise(
-    weighted_axis = mean(weighted_axis, na.rm=T)
-  )%>%
-  pivot_wider(
-    names_from = factor_name,
-    values_from = weighted_axis
-  ) %>%
-  
-  # Join with outcomes data
-  left_join(avgTradeOffs, by = c("oro_type")) %>%
-  left_join(propPosOutcomes, by = c("oro_type")) %>%
-  select(-n_positive, -total) %>%
-  ungroup() %>%
-  filter(oro_type != "Soft infrastructure") %>%
-  mutate(oro_type = droplevels(oro_type)) %>%
-  mutate(
-    across(
-      where(is.numeric),
-      ~rescale_signed(.x)
-    )
-  )%>%
-  ungroup()
-
-
-
-ggRad <- ggRadar(data = spiderAxes_df %>% select(-mean_pnratio), aes(facet = oro_type), rescale=FALSE,
-                 size=0.8, alpha = 0.3)+
-  facet_wrap(~oro_type, ncol=4, labeller = label_wrap_gen(width=30))+
-  scale_x_discrete(
-    breaks = allAxisCols,
-    labels = allAxisColsLabs
-  )+
-  scale_y_continuous(
-    # limits = c(ymn, ymx),
-    breaks = grid_lines
-  )+
-  scale_fill_manual(
-    breaks = oroTypeAes$levels,
-    values = oroTypeAes$col
-  )+
-  scale_color_manual(
-    breaks = oroTypeAes$levels,
-    values = rep("black", length(oroTypeAes$col))
-  )+
-  geom_text(
-    data = data.frame(
-      x=rep(0, length(grid_lines)-1),
-      y=grid_lines[2:(length(grid_lines))]
-    ),
-    aes(x=x, y=y, label=y),
-    size=2,
-    inherit.aes = FALSE
-  )+
-  labs(
-    col = "Evidence type",
-    fill = "Evidence type"
-  )+
-  my_coord_radar(clip="off")+
-  theme_minimal()+
-  theme(
-    legend.position = "none",
-    axis.text.y = element_blank(),
-    axis.text.x = element_text(margin = margin(t=20), vjust=0),
-    strip.text = element_text(size=9),
-    # panel.grid.minor.y = element_blank(),
-    panel.grid.major.y = element_line(colour = "lightgrey", linewidth = 0.5),
-  )
-ggRad
-
-
-ggsave(
-  here::here("figures/supplemental/radar_plot_oro_noEvidenceType_noNbS.pdf"),
-  ggRad,
-  width = 7, height = 5
-)
-
-```
-
-
-
-```{r remove -- bar plot version instead of radar plot}
-
-# calculate outcomes
-oroOutcomes <- expand_labels_with_weight(df = studyResults, id_col = article_outcome_id, list_col = oro_type) %>%
-  left_join(studyResults %>% select(id, article_outcome_id,result_type, result_effect)) %>%
-  left_join(codedVars %>% select(id, evidence_type), by = "id") %>%
-  rename(
-    oro_type = label
-  ) %>%
-  mutate(
-    oro_type = factor(
-      oro_type,
-      levels = oroTypeAes$levels
-    ),
-    evidence_type = factor(
-      evidence_type,
-      levels=c("Quantitative metric","Social empirical","Qualitative - other")
-    )
-  )
-
-totals <- oroOutcomes %>%
-  group_by(oro_type) %>%
-  summarise(
-    total = sum(weight, na.rm=T)
-  )
-
-propPosOutcomes <- oroOutcomes %>%
-  filter(result_effect == "Positive") %>%
-  group_by(oro_type) %>%
-  summarise(
-    n_positive = sum(weight, na.rm=T)
-  ) %>%
-  left_join(
-    totals, by = c("oro_type")
-  ) %>%
-  mutate(
-    prop_positive = n_positive / total
-  ) 
-  
-
-
-## Get other axes from coded variables
-axisCols <- c("governance_body", "rules_of_law", "spatial_scale", "time_scale")
-
-factor_levels = list(
-    # evidence_type = c("Quantitative metric","Social empirical","Qualitative - other"),
-    governance_body = c("Community-based","Private organizations/companies",
-                        "National government",
-                        "Regional (e.g. RFMOs)","International"
-                        ),
-    rules_of_law = c("Law (binding)","Non-binding"),
-    time_scale = c("<= 1 month","1 month <= 1 year","1 year <= 5 years","5 years <= 10 years","> 10 years","None"),
-    spatial_scale = c("Local","National","Regional","Global","None")
-  )
-
-factor_level_lookup <- bind_rows(
-  lapply(names(factor_levels), function(fn) {
-    tibble(
-      factor_name  = fn,
-      factor_level = factor_levels[[fn]],
-      factor_num   = seq_along(factor_levels[[fn]])
-    )
-  })
-)
-
-
-
-## Try 1 -- just based on document sums, scaling 0-1
-spiderAxes_df <- join_oro_with_multilabels(
-  oro_df = oro_df,
-  codedVars = codedVars,
-  label_cols = c("governance_body", "rules_of_law", "spatial_scale", "time_scale"),
-  label_levels_list = factor_levels,
-  id_col = "id",
-  make_summary = FALSE
-) %>%
-  filter(!if_any(everything(), ~ grepl("None", .x))) %>%
-  mutate(
-    across(
-      where(is.factor),
-      ~droplevels(.x)
-    ) 
-  )%>%
-  pivot_longer(
-    cols = all_of(axisCols),   # melt only axis columns
-    names_to = "factor_name",  # column names become factor_name
-    values_to = "factor_level" # factor values become factor_level
-  )%>%
-  left_join(
-    factor_level_lookup, by = c("factor_name","factor_level")
-  ) %>%
-  group_by(
-    oro_type, factor_name
-  ) %>%
-  summarise(
-    weighted_axis = sum(factor_num, na.rm=T)/n()
-  )%>%
-  pivot_wider(
-    names_from = factor_name,
-    values_from = weighted_axis
-  ) %>%
-  
-  # Join with outcomes data
-  left_join(propPosOutcomes, by = c("oro_type")) %>%
-  select(-n_positive, -total) %>%
-  ungroup() %>%
-  mutate(
-    across(
-      where(is.numeric),
-      ~scales::rescale(.x)
-    )
-  )%>%
-  ungroup()
-
-
-
-## try 2 -- with weighted sums, scaling 0 to 1
-spiderAxes_df <- join_oro_with_multilabels(
-  oro_df = oro_df,
-  codedVars = codedVars,
-  label_cols = c("governance_body", "rules_of_law", "spatial_scale", "time_scale"),
-  label_levels_list = factor_levels,
-  id_col = "id",
-  make_summary = FALSE
-) %>%
-  filter(!if_any(everything(), ~ grepl("None", .x))) %>%
-  mutate(
-    across(
-      where(is.factor),
-      ~droplevels(.x)
-    ) 
-  )%>%
-  pivot_longer(
-    cols = all_of(axisCols),   # melt only axis columns
-    names_to = "factor_name",  # column names become factor_name
-    values_to = "factor_level" # factor values become factor_level
-  )%>%
-  left_join(
-    factor_level_lookup, by = c("factor_name","factor_level")
-  ) %>%
-  mutate(
-    weighted_axis = weight*factor_num
-  ) %>%
-  group_by(
-    id, oro_type, factor_name
-  ) %>%
-  summarise(
-    weighted_axis = sum(weighted_axis, na.rm=T)
-  )%>%
-  group_by(oro_type, factor_name)%>%
-  summarise(
-    weighted_axis = mean(weighted_axis, na.rm=T)
-  )%>%
-  pivot_wider(
-    names_from = factor_name,
-    values_from = weighted_axis
-  ) %>%
-  
-  # Join with outcomes data
-  left_join(propPosOutcomes, by = c("oro_type")) %>%
-  select(-n_positive, -total) %>%
-  ungroup() %>%
-  mutate(
-    across(
-      where(is.numeric),
-      ~scales::rescale(.x)
-    )
-  )%>%
-  ungroup()
-summary(spiderAxes_df)
-
-
-
-
-
-allAxisCols <- colnames(spiderAxes_df)[colnames(spiderAxes_df) != "oro_type"]
-allAxisColsLabs <- c("Governance scale","Rule of law","Spatial scale","Time scale","% Adaptive outcomes")
-
-ymn <- floor(min(unlist(c(spiderAxes_df[,allAxisCols])), na.rm=T))
-ymx <- ceiling(max(unlist(c(spiderAxes_df[,allAxisCols])), na.rm=T))
-grid_lines <- pretty(c(ymn, ymx))
-
-
-
-
-ggCompare <- spiderAxes_df %>%
-  pivot_longer(cols = all_of(allAxisCols), names_to = "x",values_to = "y")%>%
-  ggplot(aes(x,y,fill=oro_type))+
-  geom_col()+
-  facet_wrap(~oro_type, ncol=4, labeller = label_wrap_gen(width=30))+
-  labs(
-    x = "Criterion",
-    y = "N articles (weighted, scaled)"
-  )+
-  scale_x_discrete(
-    breaks = allAxisCols,
-    labels = allAxisColsLabs
-  )+
-  scale_y_continuous(
-    # limits = c(ymn, ymx),
-    breaks = grid_lines
-  )+
-  scale_fill_manual(
-    breaks = oroTypeAes$levels,
-    values = oroTypeAes$col
-  )+
-  theme_minimal()+
-  theme(
-    legend.position = "none",
-    # axis.text.y = element_blank(),
-    axis.text.x = element_text(angle=45, hjust=1, vjust=1, size=8),
-    strip.text = element_text(size=9),
-    plot.margin = unit(c(0.1,0.05,0.2,0.2),"cm"),
-    panel.grid.major.y = element_line(colour = "lightgrey", linewidth = 0.5),
-  )
-ggCompare
-
-
-ggsave(
-  here::here("figures/main/criterion_compare_barplot_scale01.pdf"),
-  ggCompare,
-  width = 7, height = 5
-)
-
-```
 
 
 
@@ -2505,6 +1704,137 @@ ggsave(
 
 
 # Bivariate map governance indicators ~ vulnerability
+
+```{r maps of all wbi governance indicators}
+source(here::here("R", "functions_to_format.R")) # all functions needed to format data
+source(here::here("R", "functions_to_plot.R")) # all functions needed to plot data
+
+
+wbi_all <- readxl::read_excel(
+  here::here("data/raw-data/external/worldbank_worldwide-governance-indicators/wgidataset.xlsx")
+)%>%
+  group_by(code, indicator) %>%
+  summarise(
+    year_sum = sum(as.numeric(estimate), na.rm=T),
+    year_mean = mean(as.numeric(estimate), na.rm=T)
+  ) %>%
+  mutate(
+    sum_scaled = scales::rescale(year_sum),
+    mean_scaled = scales::rescale(year_mean)
+  ) %>%
+  ungroup()
+
+wbi_combined <- wbi_all %>%
+  group_by(code) %>%
+  summarise(
+    governance_indicator_sum = sum(sum_scaled, na.rm=T),
+    governance_indicator_mean = sum(mean_scaled, na.rm=T)
+  ) %>%
+  mutate(
+    indicator = "Combined metric"
+  )
+  
+
+
+# combined data frame
+wbi_plt_df <- wbi_all %>%
+  rename(value = mean_scaled)%>%
+  select(code, indicator, value) %>%
+  bind_rows(
+    wbi_combined %>% 
+      rename(value = governance_indicator_mean) %>%
+      select(code, indicator, value)
+  ) %>%
+  pivot_wider(
+    id_cols = code, names_from = indicator, values_from = value
+  )
+
+
+indicators <- c(
+  "cc" = "Control of corruption",
+  "ge" = "Government effectiveness",
+  "pv" = "Political stability & absence of violence/terrorism",
+  "rl" = "Rule of law",
+  "rq" = "Regulatory quality",
+  "va" = "Voice and accountability",
+  "Combined metric" = "Combined metric"
+)
+
+
+
+## read in external data
+PROJ = "+proj=robin +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"
+world_shp <- ne_countries(returnclass = "sf", scale="large")
+
+# Join in plotting data (fill and point)
+data_map <- world_shp %>%
+  dplyr::full_join(wbi_plt_df, by = c("iso_a3"="code")) %>%
+  sf::st_transform(crs = PROJ)
+
+# reproject
+data_map <- try_format_data2map(input_args = list(
+  data = data_map,
+  PROJ = PROJ
+  )
+)
+
+
+## Plot
+wbi_ggps <- list()
+
+for(i in 1:length(indicators)){
+  
+  tmp_map <- ggplot2::ggplot() +
+      ## Country fill
+      ggplot2::geom_sf(data    =  data_map$data, 
+                       mapping = ggplot2::aes(fill     = !! sym(names(indicators)[i]),
+                                              geometry = geometry), 
+                       color   = "black", 
+                       size    = 0.1) +
+      
+      ggplot2::scale_fill_viridis_c(
+        name = str_wrap(indicators[i], width = 30)
+      )+
+      # Bounding box
+      ggplot2::geom_sf(data   = data_map$box, 
+                       colour = "black", 
+                       fill   = NA, 
+                       size   = 0.1) +
+      ## Add latitude and longitude labels
+      ggplot2::geom_text(data = data_map$lat_text, mapping = ggplot2::aes(x = X.prj2-1*10e5, y = Y.prj,          label = lbl), color = "grey20", size = 1.5) +
+      ggplot2::geom_text(data = data_map$lon_text, mapping = ggplot2::aes(x = X.prj,         y = Y.prj-0.5*10e5, label = lbl), color = "black",  size = 1.5) + 
+      
+      ggplot2::theme_void() +
+    # Themes
+    theme(axis.title.x     = element_blank(),
+          axis.title.y     = element_blank(),
+          plot.margin = unit(c(0.1,0.1,0.2,0.1),"cm"),
+          legend.title.position = "top",
+          legend.position = "bottom"
+          )
+  
+
+    # tmp_map
+  wbi_ggps[[i]] <- tmp_map
+  
+  
+}
+
+
+## combine 
+require(patchwork)
+combined_plots <- wrap_plots(
+  wbi_ggps, ncol = 2
+)+
+  plot_annotation(tag_levels = "a")
+
+
+ggsave(here::here("figures/supplemental/all_wbi_indicator_maps.png"),
+       combined_plots, width = 8, height = 12, dpi = 600)
+
+
+```
+
 
 ```{r calculate correlation between governance and vulnerability}
 
@@ -3133,7 +2463,7 @@ write.csv(
 ```
 
 
-# Model predictors of positive effects
+# Outcomes
 
 Model is biased to pick up more positive effects, so not sure how good the finding is that there are less negative...
 
@@ -3217,164 +2547,7 @@ summary(result_model_df)
 
 
 
-## Binary GLM (P/A of any positive effect)
-
-```{r logistic glm of positive effect}
-
-## Do chi sq test on candidate predictors
-categorical_vars <- names(result_model_df)[!names(result_model_df) %in% c("id", "result_type", "adaptive")]
-
-
-chisq_results <- lapply(categorical_vars, function(var) {
-  tbl <- table(result_model_df[[var]], result_model_df$adaptive)
-  tbl <- tbl[rowSums(tbl, na.rm=T)>0,]
-  test <- chisq.test(tbl)
-  list(variable = var, p_value = test$p.value)
-})
-
-# Convert to data frame and sort
-chisq_df <- do.call(rbind, lapply(chisq_results, as.data.frame))
-chisq_df[order(chisq_df$p_value), ]
-
-
-
-# Fit logistic model with all predictors
-glm_results <- lapply(categorical_vars, function(var) {
-  var_sym <-rlang::sym(var)
-  tmpDat <- result_model_df[,c("adaptive", var)] %>%
-    filter(!grepl("None", !!var_sym))
-  glm_fit <- glm(adaptive ~ ., 
-                    data = tmpDat,
-                   family = binomial)
-  glm_summary <- summary(glm_fit)
-  glm_summary <- as.list(glm_summary)
-  glm_summary$variable = var
-  glm_summary$fit <- glm_fit
-  
-  totals <- tmpDat %>%
-    group_by(!!var_sym) %>%
-    summarise(
-      total = n()
-    ) %>%
-    ungroup()
-  
-  varTitle <- gsub("_"," ", var)
-  varTitle <- stringr::str_to_sentence(varTitle)
-  
-  pvals <- glm_summary$coefficients %>% 
-    as.data.frame() %>%
-    tibble::rownames_to_column(var) %>%
-    mutate(
-      estimate = scales::number(Estimate, scale_cut = scales::cut_short_scale()),
-      pval_label = ufs::formatPvalue(`Pr(>|z|)`),
-      # !!var_sym = case_when(
-      #   !!var_sym == "(Intercept)" ~ levels(tmpDat[,var])[1],
-      #   TRUE ~ gsub(var,"",!!var_sym)
-      # )
-    ) %>%
-    mutate(
-      pval_label = ifelse(
-        `Pr(>|z|)` <= 0.05, paste("\u03b2 =",estimate,"\n",pval_label,"*", sep=""), pval_label
-      ),
-      pval_col = case_when(
-        `Pr(>|z|)` <= 0.05 & 0 < Estimate ~ "darkgreen", 
-        `Pr(>|z|)` <= 0.05 & Estimate < 0 ~"red", 
-        TRUE ~ "darkgrey"
-      )
-    )
-  pvals[,var] <- gsub(var,"",pvals[,var])
-  pvals[,var] <- ifelse(pvals[,var] == "(Intercept)", levels(tmpDat[,var])[1],
-                        pvals[,var])
-  
-  glm_ggp <- tmpDat %>%
-    filter(adaptive == "Adaptive") %>%
-    group_by(!!var_sym) %>%
-    summarise(
-      n_adapt = n()
-    ) %>%
-    left_join(totals, by = var) %>%
-    mutate(
-      prop_adapt = n_adapt/total
-    ) %>%
-    ggplot(aes(x=!!var_sym, y=prop_adapt*100))+
-    geom_col()+
-    geom_text(
-      data = pvals,
-      aes(x=!!var_sym,label = pval_label, col = pval_col), y=Inf, hjust = 1, vjust=1,
-      size=2.75, angle=45
-    )+
-    scale_color_identity()+
-    geom_hline(yintercept = 50, col="red", linewidth = 0.8)+
-    scale_x_discrete(
-      labels = function(x){
-        str_wrap(gsub("/"," / ", x), width = 20)
-        }
-    )+
-    scale_y_continuous(
-      limits = c(0, NA), expand = expansion(mult = c(0,0.4))
-    )+
-    labs(
-      x = varTitle,
-      y="Adaptive result (%)",
-    )+
-    coord_cartesian(clip="off")+
-    theme_minimal(base_size = 10)+
-    theme(
-      axis.text.x = element_text(angle = 45, hjust=1)
-    )
-  
-  # glm_ggp
-      
-  glm_summary$glm_ggp <- glm_ggp
-  
-  return(glm_summary)
-})
-
-
-# plot all ggplots
-glm_ggp_list <- lapply(glm_results, function(x) x$glm_ggp)
-
-
-require(patchwork)
-
-# Combine using patchwork
-combined_patchwork <- wrap_plots(glm_ggp_list, ncol = 2) + 
-  plot_annotation(tag_levels = 'a')
-
-ggsave(here::here("figures/supplemental/adaptation_predictors_glmPlot.pdf"),
-       combined_patchwork, width = 7, height = 15)
-
-
-
-
-# fit all together -- not too helpful...
-# Remove None categories and low sampled labels
-result_glm_df <- result_model_df %>%
-  select(-id, -climatic_impact_driver) %>%
-  filter(!if_any(everything(), ~ grepl("None", .)),
-         !grepl("Regional", spatial_scale),
-         !grepl("RFMOs", governance_body)) %>%
-  mutate(
-    across(
-      where(is.factor),
-      ~droplevels(.x)
-    )
-  ) %>%
-  select(-spatial_scale)
-
-
-adaptive_glm <- glm(adaptive ~ ., 
-                    data = result_glm_df,
-                   family = binomial)
-
-summary(adaptive_glm)
-
-glm_summary <- summary(adaptive_glm)
-glm_summary$aic
-glm_summary$coefficients
-```
-
-## Binary Gradient-boosted tree model (at the outcome level)
+## Binary Gradient-boosted tree model of adaptive outcomes (at the outcome level)
 
 However, when all are fit together, which variables are most influential in predicting adaptive outcomes? Use Gradient boosted tree model
 
@@ -3565,170 +2738,8 @@ cm[["byClass"]][c("F1","Recall","Precision")]
        #  1         1         1
 ```
 
-## Poisson model of number of positive effects - remove
 
-```{r format poisson model data}
-## expand result_type [social, ecological, etc..] labels
-allIds <- data.frame(id = unique(codedVars$id))
-
-studyResults_pois <- expand_labels(studyResults,id_col = id, list_col = result_type) %>%
-  select(id, parsed_labels, result_effect_regrouped)%>%
-  rename(result_type = parsed_labels, adaptive = result_effect_regrouped) %>%
-  filter(adaptive == "Adaptive") %>%
-  group_by(id) %>%
-  summarise(
-    n_adaptive = n()
-  ) %>%
-  ungroup() %>%
-  right_join(
-    allIds,
-    by = "id"
-  ) %>%
-  replace_na(list(n_adaptive = 0))
-studyResults_pois$n_adaptive[is.na(studyResults_pois$n_adaptive)] <- 0
-  
-summary(studyResults_pois)
-
-
-result_poisson_df <- join_oro_with_multilabels_long(
-  oro_df = oro_df,
-  codedVars = codedVars,
-  label_cols = c("continent", "climatic_impact_driver",
-                 "spatial_scale","procedural_equity","governance_body",
-                 "rules_of_law"),
-  label_levels_list = list(
-    continent = c("Africa","Asia", "Europe",
-                  "North America","South America",
-                  "Oceania"),
-    climatic_impact_driver = cidAes$levels,
-    spatial_scale = c("Local","National","Regional","Global","None"),
-    procedural_equity = c("TRUE","FALSE"),
-    governance_body = c("Community-based","National government",
-                        "Regional (e.g. RFMOs)","International",
-                        "Private organizations/companies"),
-    rules_of_law = c("Law (binding)","Non-binding")
-    
-  ),
-  id_col = "id"
-) %>%
-  full_join(
-    studyResults_pois,
-    by="id",
-    relationship = "many-to-many"
-  ) %>%
-  mutate(across(
-      where(is.factor),
-      ~droplevels(.x)
-    ))
-
-summary(result_poisson_df)
-
-```
-
-
-
-```{r poisson glm of number of positive effects}
-
-categorical_vars <- names(result_model_df)[!names(result_model_df) %in% c("id", "result_type", "adaptive")]
-
-
-# Fit logistic model with all predictors
-glm_pois_results <- lapply(categorical_vars, function(var) {
-  var_sym <-rlang::sym(var)
-  tmpDat <- result_poisson_df[,c("n_adaptive", var)] %>%
-    filter(!grepl("None", !!var_sym))
-  glm_fit <- glm(n_adaptive ~ ., 
-                    data = tmpDat,
-                   family = poisson)
-  glm_summary <- summary(glm_fit)
-  glm_summary <- as.list(glm_summary)
-  glm_summary$variable = var
-  glm_summary$fit <- glm_fit
-  
-  varTitle <- gsub("_"," ", var)
-  varTitle <- stringr::str_to_sentence(varTitle)
-  
-  pvals <- glm_summary$coefficients %>% 
-    as.data.frame() %>%
-    tibble::rownames_to_column(var) %>%
-    mutate(
-      estimate = scales::number(Estimate, scale_cut = scales::cut_short_scale()),
-      pval_label = ufs::formatPvalue(`Pr(>|z|)`),
-      # !!var_sym = case_when(
-      #   !!var_sym == "(Intercept)" ~ levels(tmpDat[,var])[1],
-      #   TRUE ~ gsub(var,"",!!var_sym)
-      # )
-    ) %>%
-    mutate(
-      pval_label = ifelse(
-        `Pr(>|z|)` <= 0.05, paste("\u03b2 =",estimate,"\n",pval_label,"*", sep=""), pval_label
-      ),
-      pval_col = case_when(
-        `Pr(>|z|)` <= 0.05 & 0 < Estimate ~ "darkgreen", 
-        `Pr(>|z|)` <= 0.05 & Estimate < 0 ~"red", 
-        TRUE ~ "darkgrey"
-      )
-    )
-  pvals[,var] <- gsub(var,"",pvals[,var])
-  pvals[,var] <- ifelse(pvals[,var] == "(Intercept)", levels(tmpDat[,var])[1],
-                        pvals[,var])
-  
-  glm_ggp <- tmpDat %>%
-    group_by(!!var_sym) %>%
-    summarise(
-      n_adapt = sum(n_adaptive, na.rm=T)
-    ) %>%
-    ggplot(aes(x=!!var_sym, y=n_adapt))+
-    geom_col()+
-    geom_text(
-      data = pvals,
-      aes(x=!!var_sym,label = pval_label, col = pval_col), y=Inf, hjust = 1, vjust=1,
-      size=2.75, angle=45
-    )+
-    scale_color_identity()+
-    scale_x_discrete(
-      labels = function(x){
-        str_wrap(gsub("/"," / ", x), width = 20)
-        }
-    )+
-    scale_y_continuous(
-      limits = c(0, NA), expand = expansion(mult = c(0,0.4))
-    )+
-    labs(
-      x = varTitle,
-      y="Adaptive result (N)",
-    )+
-    coord_cartesian(clip="off")+
-    theme_minimal(base_size = 10)+
-    theme(
-      axis.text.x = element_text(angle = 45, hjust=1)
-    )
-  
-  # glm_ggp
-      
-  glm_summary$glm_ggp <- glm_ggp
-  
-  return(glm_summary)
-})
-
-
-# plot all ggplots
-ggp_poisson_list <- lapply(glm_pois_results, function(x) x$glm_ggp)
-
-
-
-
-# Combine using patchwork
-combined_patchwork <- wrap_plots(ggp_poisson_list, ncol = 2) + 
-  plot_annotation(tag_levels = 'a')
-
-ggsave(here::here("figures/supplemental/N_adaptation_predictors_poissonGlmPlot.pdf"),
-       combined_patchwork, width = 7, height = 15)
-
-
-```
-
-## Result type priorities and trade offs -- are some outcomes prioritized over others?
+## Result type priorities and trade offs plot
 
 
 Rationale: are social outcomes (e.g. being able to stay fishing -- important to cultural identity) priotizied over economic costs?
@@ -3827,27 +2838,6 @@ ggsave(
 )
 
 
-
-# ## Model this? Not quite sure how though
-# resultTradeOffs_df_long <- resultTradeOffs_df %>%
-#   pivot_longer(cols = c("Positive", "Negative"), 
-#                names_to = "outcome_sign", 
-#                values_to = "value")
-# 
-# 
-# # I think I need to separate and model postive and negative separately
-# ## lmer
-# library(lme4)
-# model <- lmer(value ~ result_type * positive_result + (1|outcome_sign), data = resultTradeOffs_df_long)
-# 
-# summary(model)
-# 
-# # 2-way anova
-# aov_model <- aov(value ~ result_type * positive_result, data = resultTradeOffs_df_long)
-# summary(aov_model)
-# 
-# aov_pos <- aov(Positive ~ result_type + positive_result, data = resultTradeOffs_df)
-# summary(aov_pos)
 
 ```
 
