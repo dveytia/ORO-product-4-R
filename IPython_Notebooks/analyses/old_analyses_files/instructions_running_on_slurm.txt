@@ -1,0 +1,52 @@
+## For Script on test list --------------------------------------
+
+# Start interactive slurm shell
+salloc --nodes=1 --ntasks=3 --cpus-per-task=12 --time=10:00:00 --mem=100G --job-name=p4code
+
+## If needed, make sure nothing else is on the port
+# lsof -i :11434
+
+
+# Navigate to directory and activate environment
+cd /home/dveytia/IPython_Notebooks/Product_4/analyses
+conda deactivate
+conda activate deepseekChat_env
+export OLLAMA_HOST=http://127.0.0.1:11434
+export OLLAMA_MODELS=/homedata/dveytia/ollama_models # added this
+
+
+# Start ollama 
+OLLAMA_NUM_PARALLEL=2 OLLAMA_MAX_LOADED_MODELS=2 ollama serve > ollama_coding_serve.log 2>&1 &
+OLLAMA_PID=$!
+sleep 5
+
+# Start python (parallelization achieved using concurrent.futures)
+python 0_1_9_ragDeepseek_unseen.py > python_coding.log 2>&1
+kill $OLLAMA_PID
+
+
+## For Script on unseen articles --------------------------------------
+
+# Start interactive slurm shell
+salloc --nodes=1 --ntasks=12 --cpus-per-task=8 --time=10:00:00 --mem=200G --job-name=p2Screen
+
+## If needed, make sure nothing else is on the port
+# lsof -i :11434
+
+
+# Set up environment
+cd /home/dveytia/IPython_Notebooks/Product_2/analyses
+conda deactivate
+conda activate deepseekChat_env
+export OLLAMA_HOST=http://127.0.0.1:11434
+export OLLAMA_MODELS=/homedata/dveytia/ollama_models # added this
+
+
+# Start ollama 
+OLLAMA_NUM_PARALLEL=2 OLLAMA_MAX_LOADED_MODELS=2 ollama serve > ollama_coding_serve.log 2>&1 &
+OLLAMA_PID=$!
+sleep 5
+
+# Start python (parallelization achieved using concurrent.futures)
+python 0_1_9_ragDeepseek_unseen.py > python_coding.log 2>&1
+kill $OLLAMA_PID

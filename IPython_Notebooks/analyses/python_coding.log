@@ -1,0 +1,21 @@
+/home/dveytia/IPython_Notebooks/Product_4/analyses/0_1_9_ragDeepseek_unseen.py:5: LangChainDeprecationWarning: Importing PyPDFLoader from langchain.document_loaders is deprecated. Please replace deprecated imports:
+
+>> from langchain.document_loaders import PyPDFLoader
+
+with new imports of:
+
+>> from langchain_community.document_loaders import PyPDFLoader
+You can use the langchain cli to **automatically** upgrade many imports. Please see documentation here <https://python.langchain.com/v0.2/docs/versions/v0_2/>
+  from langchain.document_loaders import PyPDFLoader
+/home/dveytia/IPython_Notebooks/Product_4/analyses/0_1_9_ragDeepseek_unseen.py:8: LangChainDeprecationWarning: Importing FAISS from langchain.vectorstores is deprecated. Please replace deprecated imports:
+
+>> from langchain.vectorstores import FAISS
+
+with new imports of:
+
+>> from langchain_community.vectorstores import FAISS
+You can use the langchain cli to **automatically** upgrade many imports. Please see documentation here <https://python.langchain.com/v0.2/docs/versions/v0_2/>
+  from langchain.vectorstores import FAISS
+Fetching 30 files:   0%|          | 0/30 [00:00<?, ?it/s]Fetching 30 files: 100%|██████████| 30/30 [00:00<00:00, 19433.07it/s]
+Processing 0 PDFs
+[INFO] Loaded 0 previously failed IDs from log.

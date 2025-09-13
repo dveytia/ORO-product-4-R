@@ -1,0 +1,23 @@
+/home/dveytia/IPython_Notebooks/Product_4/analyses/0_1_5_ragDeepseek.py:5: LangChainDeprecationWarning: Importing PyPDFLoader from langchain.document_loaders is deprecated. Please replace deprecated imports:
+
+>> from langchain.document_loaders import PyPDFLoader
+
+with new imports of:
+
+>> from langchain_community.document_loaders import PyPDFLoader
+You can use the langchain cli to **automatically** upgrade many imports. Please see documentation here <https://python.langchain.com/v0.2/docs/versions/v0_2/>
+  from langchain.document_loaders import PyPDFLoader
+/home/dveytia/IPython_Notebooks/Product_4/analyses/0_1_5_ragDeepseek.py:8: LangChainDeprecationWarning: Importing FAISS from langchain.vectorstores is deprecated. Please replace deprecated imports:
+
+>> from langchain.vectorstores import FAISS
+
+with new imports of:
+
+>> from langchain_community.vectorstores import FAISS
+You can use the langchain cli to **automatically** upgrade many imports. Please see documentation here <https://python.langchain.com/v0.2/docs/versions/v0_2/>
+  from langchain.vectorstores import FAISS
+Traceback (most recent call last):
+  File "/home/dveytia/IPython_Notebooks/Product_4/analyses/0_1_5_ragDeepseek.py", line 68, in <module>
+    embeddings = LangchainBGEM3Embeddings()
+                 ^^^^^^^^^^^^^^^^^^^^^^^^
+NameError: name 'LangchainBGEM3Embeddings' is not defined
