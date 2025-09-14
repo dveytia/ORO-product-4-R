@@ -23,10 +23,10 @@ SafeFish_dict = {
         3) The study's *outcomes* result from the adaptation action. This includes outcomes on effectiveness (e.g. adaptation, success, mal-adaptation, failure), co-benefits, dis-benefits, side-effects or trade-offs, costs, or impacts. 
 
         Use the following term definitions to guide your interpretation: 
-        - climate change: climate change, including 'climatic impact drivers': environmental pressures/hazards caused/exacerbated by climate change. These include, for example: ocean acidification, ocean warming, marine heatwaves, sea level rise, storm surges, extreme weather, extreme climate variablility (e.g. increased frequency/intensity of ENSO), Harmful Algal Blooms (HABs).
-        - adaptation: the process of adjustment to actual or expected climate and its effects, in order to moderate harm or exploit beneficial opportunities. Adapation outcomes can be ecological, economic or social. 
-        - action: any action. The definition of 'action' is broad, and includes intitutional actions (e.g. governance, laws, policy, practice, fisheries management, ecosystem-based management, strategy), economic mechanisms (e.g. finance, credit, financial markets, ownership schemes, value chains), socio-behavioural actions (i.e. actions, responses or current practices taken voluntarily by individual fishers, households, or communities to adapt their behavior or livelihoods, for example: changing fishing practices, migration, relocation, livelihood diversification), built infrastructure (e.g. sea walls, dykes), nature-based coastal protection (e.g. coastal ecosystem restoration for storm protection, shore nourishment), technology (e.g. early warning systems, new fishing technologies) 
-        - fisheries: any marine fishery or fishing practice (commercial, subsistence, artisinal), including: fishers, fishing community, commerically fished species (e.g. population health, stock size, landings, catch), or fishing business. 
+        - climate change: climate change, including 'climatic impact drivers': environmental pressures/hazards caused/exacerbated by climate change. These include, for example: ocean acidification, ocean warming, marine heatwaves, sea level rise, storm surges, extreme weather, extreme climate variability (e.g. increased frequency/intensity of ENSO), Harmful Algal Blooms (HABs).
+        - adaptation: the process of adjustment to actual or expected climate and its effects, in order to moderate harm or exploit beneficial opportunities. Adaptation outcomes can be ecological, economic or social. 
+        - action: any action. The definition of 'action' is broad, and includes institutional actions (e.g. governance, laws, policy, practice, fisheries management, ecosystem-based management, strategy), economic mechanisms (e.g. finance, credit, financial markets, ownership schemes, value chains), socio-behavioural actions (i.e. actions, responses or current practices taken voluntarily by individual fishers, households, or communities to adapt their behavior or livelihoods, for example: changing fishing practices, migration, relocation, livelihood diversification), built infrastructure (e.g. sea walls, dykes), nature-based coastal protection (e.g. coastal ecosystem restoration for storm protection, shore nourishment), technology (e.g. early warning systems, new fishing technologies) 
+        - fisheries: any marine fishery or fishing practice (commercial, subsistence, artisanal), including: fishers, fishing community, commercially fished species (e.g. population health, stock size, landings, catch), or fishing business. 
         - outcome: a result or finding derived from the study conducted by the authors. Outcomes can be qualitative (descriptive, anecdotal, observation) or quantitative.  
         
 
@@ -41,7 +41,7 @@ SafeFish_dict = {
         - *the adaptation action is NOT implemented*. For example:
             - vulnerability assessments
             - planning or design of an action
-            - action reccomendation with no implementation
+            - action recommendation with no implementation
         - Coastal/marine climate change adaptation with NO fishery relevance (e.g. aquaculture, mariculture, coastal community adaptation with no fishery).
         - actions adapting to other pressures (e.g. overfishing/pollution) without mention of climate change or a climatic impact driver.
         - freshwater fisheries
@@ -72,7 +72,7 @@ SafeFish_dict = {
 
                     ## Here are some examples of responses:
                     
-                    example_text: "In this article, we compare four fishing-based areas in Thailand and the Philippines to examine if and how small-scale fishing communities are able to escape marginalisation. Three questions guide our inquiry: (i) How have fishing communities been affected by overfishing, climate change and other pressures? (ii) What adaptive strategies have these communities employed to mitigate socio-economic and environmental challenges? "
+                    example_text: "In this article, we compare four fishing-based areas in Thailand and the Philippines to examine if and how small-scale fishing communities are able to escape marginalization. Three questions guide our inquiry: (i) How have fishing communities been affected by overfishing, climate change and other pressures? (ii) What adaptive strategies have these communities employed to mitigate socio-economic and environmental challenges? "
                     example_assistant: {{'include': True}} 
                     
                     --
@@ -311,7 +311,7 @@ InterventionInfrastructure_dict = {
         """,
         "variable exclude":"""
         EXCLUDE: 
-        - **adaptation actions that are NOT INFRASTRUCTURE**. For EXCLUDE: intitutional actions (e.g. governance, laws, policy, practice, fisheries management, ecosystem-based management, strategy), economic mechanisms (e.g. finance, credit, financial markets, ownership schemes, value chains), socio-behavioural actions (i.e. actions, responses or current practices taken voluntarily by individual fishers, households, or communities to adapt their behavior or livelihoods, for example: changing fishing practices, migration, relocation, livelihood diversification), technology (e.g. early warning systems, new fishing technologies) 
+        - **adaptation actions that are NOT INFRASTRUCTURE**. For EXCLUDE: institutional actions (e.g. governance, laws, policy, practice, fisheries management, ecosystem-based management, strategy), economic mechanisms (e.g. finance, credit, financial markets, ownership schemes, value chains), socio-behavioural actions (i.e. actions, responses or current practices taken voluntarily by individual fishers, households, or communities to adapt their behavior or livelihoods, for example: changing fishing practices, migration, relocation, livelihood diversification), technology (e.g. early warning systems, new fishing technologies) 
         - coastal restoration/conservation if coastal hazard prevention/climate change (e.g. storm, erosion, sea level rise) is NOT mentioned.
         - Restoration activities under the purview of fisheries management to improve the health of fish stocks but are not aimed to protect coasts (e.g. fish habitat restoration)
         - aquaculture, freshwater fishery, or agriculture-related actions, 
@@ -363,7 +363,7 @@ InterventionInfrastructure_dict = {
 
                     example_text: "a broad-based outcome, including material goals such as economic yield, food supplies, and employ-ment, as well as nonmaterial aspects such as safe, decent, and nondiscriminatory work conditions. It also encompasses the preservation of marine and coastal ecosystems (International Labour Organi-', 'the heritage of the fishing community (i.e., the built environment) is protected and that 2) access to affordable housing is provided. These measures, if implemented, should caution against overdevelopment and property value inflation at the expense of local residents."
                     example_assistant: {{"intervention_infrastructure": []}}
-                    Reason: Vague references to the built environment, ecoystem health and socio-ecological ecosystems is insufficient evidence for classification as infrastructure implemented to help marine/coastal fisheries/fishing communities adapt to climate change. 
+                    Reason: Vague references to the built environment, ecosystem health and socio-ecological ecosystems is insufficient evidence for classification as infrastructure implemented to help marine/coastal fisheries/fishing communities adapt to climate change. 
                     """
                 ),
                 ("human", """
@@ -870,7 +870,7 @@ StudyResult_dict = {
 
 
 class ProceduralEquity(BaseModel):
-    procedural_equity: bool = Field(default=False,description= "Was procedural equity considered in the design or implementation of the adaptation action? Examples of procedural equity include: communities having a voice in the decisionmaking process; inclusive engagement; considerations make for gender equity, social justice, inclusiveness; factoring in of local or indigenous knowledge; participatory approaches.")
+    procedural_equity: bool = Field(default=False,description= "Was procedural equity considered in the design or implementation of the adaptation action? Examples of procedural equity include: communities having a voice in the decision making process; inclusive engagement; considerations make for gender equity, social justice, inclusiveness; factoring in of local or indigenous knowledge; participatory approaches.")
     procedural_equity_description: str = Field(default='None', description="A short summary (max 50 words) of how procedural equity was considered. If the information is unavailable or unclear, return 'None' as a default.")
 
     
@@ -909,7 +909,7 @@ ProceduralEquity_dict = {
         """,
         "variable exclude":"""
         ** Filtering Criteria ** 
-        - DO NOT include reccomendations for how procedural equity could be implemented/is needed in future if it has not already been implemented
+        - DO NOT include recommendations for how procedural equity could be implemented/is needed in future if it has not already been implemented
         - DO NOT include information mentioned from other studies, background literature, or prior work cited in the article.
         - DO NOT include information mentioned as examples, comparisons, or findings from other studies
         """,
@@ -955,7 +955,7 @@ ProceduralEquity_dict = {
 class Governance(BaseModel):
     governance_body: List[Literal['Community-based','National government','Regional (e.g. RFMOs)','International','Private organizations/companies']] = Field(default_factory=list, description="Select the best-fitting categories to describe the institution/institutions responsible for governing the activities of the adaptation action from the following allowed values: ['Community-based','National government','Regional (e.g. RFMOs)','International','Private organizations/companies']. If none apply, or the answer is unclear, return an empty list."
     )
-    rules_of_law: List[Literal['Law (binding)','Non-binding']] = Field(default_factory=list, description="How is the adaptation action governed? Select the best-fitting categories to describe how the action is goverened from the following allowed values: ['Law (binding)', 'Non-binding']. If none apply, or the answer is unclear, return an empty list.")
+    rules_of_law: List[Literal['Law (binding)','Non-binding']] = Field(default_factory=list, description="How is the adaptation action governed? Select the best-fitting categories to describe how the action is governed from the following allowed values: ['Law (binding)', 'Non-binding']. If none apply, or the answer is unclear, return an empty list.")
 
     
 GovernanceParser = PydanticOutputParser(pydantic_object=Governance)
@@ -1064,8 +1064,6 @@ Governance_dict = {
 # result
 
 
-
-## LEFT OFF HERE #######
 
 
 
