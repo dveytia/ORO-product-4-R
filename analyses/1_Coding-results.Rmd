@@ -796,6 +796,142 @@ ggsave(here::here("figures/supplemental/oro_type_vs_continent_barplots.pdf"),
 
 ```
 
+```{r 3 panels - continent x oro two barplots and methods barplot}
+
+## Continent x ORO barplots (2)
+continent_oro <- join_oro_with_label(oro_df, codedVars, continent, 
+                                     c(
+                                       "Africa","Asia", "Europe",
+                                       "North America","South America",
+                                       "Oceania"
+                                     )
+                                     ) %>%
+  complete(oro_type, label, fill = list(weightedSum = 0, count = 0)) %>%
+  filter(
+    label != "None identified"
+  ) %>%
+  mutate(
+    label = droplevels(label)
+  )
+
+level_pal = RColorBrewer::brewer.pal(n = length(levels(continent_oro$label)),
+                                     name = "Accent"
+                                    )
+if("None identified" %in% levels(continent_oro$label)){
+  level_pal <- level_pal[-1]
+  level_pal <- c(level_pal, "darkgrey")
+}
+
+
+
+
+
+
+continent_bar_ggp1 <- ggplot(data = continent_oro %>%
+                              group_by(oro_type, label) %>%
+                              summarise(
+                                weightedSum = sum(weightedSum, na.rm=T)
+                              ), 
+                            aes(x=label, y = weightedSum, fill = oro_type))+
+  scale_fill_manual(
+    breaks = oroTypeAes$levels,
+    values = oroTypeAes$col
+  )+
+  geom_col()+
+  guides(fill=guide_legend(nrow=4))+
+  labs(
+    y="N articles (weighted)",
+    fill = "ORO type",
+    x="Continent"
+
+  )+
+
+  theme_minimal(base_size = 10)+
+  theme(
+    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm"),
+    axis.text.x = element_text(angle=45, hjust=1),
+    legend.position = "bottom",
+    legend.box.margin = margin(0, 15, 0, 0)
+  )
+
+continent_bar_ggp1
+
+continent_bar_ggp2 <- ggplot(data = continent_oro %>%
+                              group_by(oro_type, label) %>%
+                              summarise(
+                                weightedSum = sum(weightedSum, na.rm=T)
+                              ), 
+                            aes(x=oro_type, y = weightedSum, fill = label))+
+  scale_fill_manual(values = level_pal)+
+  geom_col()+
+  guides(fill=guide_legend(nrow=3))+
+  labs(
+    y="N articles (weighted)",
+    fill = "Continent",
+    x="ORO type"
+
+  )+
+
+  theme_minimal(base_size = 10)+
+  theme(
+    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm"),
+    axis.text.x = element_text(angle=45, hjust=1),
+    legend.position = "bottom"
+  )
+
+continent_bar_ggp2
+
+
+## Methods bar plot
+type_method_joined <- join_oro_with_label(oro_df, codedVars, study_method, 
+                                     studyMethodAes$levels
+                                     )%>%
+  rename(study_method = label)
+
+
+method_pal <- c(studyMethodAes$col, "grey")
+
+
+method_ggp <- ggplot(type_method_joined, aes(x=oro_type, y=weightedSum, fill = study_method))+
+  geom_col(position="stack")+
+  labs(
+    x = "ORO type",
+    y="N articles (weighted)",
+    fill = "Data\ntype"
+  )+
+  scale_fill_manual(
+    values = method_pal,
+    breaks = levels(type_method_joined$study_method)
+  )+
+  theme_minimal(base_size = 12)+
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1),
+    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
+  )
+
+method_ggp
+
+
+plotList = list(continent_bar_ggp1, continent_bar_ggp2, method_ggp)
+plotLay <- c(
+  "AABB
+  #CC#"
+)
+
+combined_patchwork <- wrap_plots(plotList, design = plotLay,widths = c(0.25,1,1,0.25)) +
+  plot_annotation(tag_levels = 'a')
+
+ggsave(here::here("figures/supplemental/oro_type_vs_continent_methods_barplots.pdf"),
+       combined_patchwork, width = 8, height = 10)
+ggsave(here::here("figures/supplemental/oro_type_vs_continent_methods_barplots.png"),
+       combined_patchwork, width = 8, height = 10, dpi=600)
+
+
+
+
+
+```
+
 
 ```{r climate impact drivers barplot}
 cids <- expand_labels_with_weight(codedVars, id, climatic_impact_driver) %>%
