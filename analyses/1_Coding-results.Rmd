@@ -379,6 +379,10 @@ anti_id_country_data <- all_country_data %>%
 
 # check there are no duplicates
 sum(anti_id_country_data$iso3c %in% id_country_data$iso3c) # 0
+
+anti_id_country_data%>%filter(iso3c=="ISL")
+id_country_data%>%filter(iso3c=="ISL")
+
 ```
 
 
@@ -2022,16 +2026,9 @@ world_shp_data <- world_shp %>%
   sf::st_transform(crs = PROJ)
 
 
-# # Join in plotting data (fill and point)
-# data_map <- world_shp %>%
-#   dplyr::full_join(wbi_plt_df, by = c("iso_a3_eh"="code")) %>%
-#   sf::st_transform(crs = PROJ)
-# 
-# check
 
+# check
 world_shp_data %>% filter(adm0_a3 == "FRA") %>% select(adm0_a3, iso_a3_eh, n_articles_country)
-# wbi_plt_df%>% filter(code=="FRA")%>% select(`Combined metric`)
-# data_map %>% filter(adm0_a3=="FRA") %>% select(`Combined metric`)
 
 
 
@@ -2097,7 +2094,8 @@ map_bi <- cowplot::ggdraw() +
 
 
 ## Save plot
-ggsave(here::here("figures/supplemental/governance_v_fisheryVulnerability_bivarMap.pdf"), width = 10, height = 5, device = "pdf")
+ggsave(here::here("figures/supplemental/governance_v_fisheryVulnerability_bivarMap.pdf"),
+       plot = map_bi, width = 10, height = 5, device = "pdf")
 ```
 
 
@@ -2246,11 +2244,16 @@ dat_bivar_map <- dat_bivar_sum %>%
   full_join(all_dat_bivar_iso, by = base::intersect(colnames(dat_bivar_sum),colnames(dat_bivar_iso))) %>%
   rename(
     iso_code = iso3c
-  )
+  ) %>%
+  inner_join(country_lookup, by=c("iso_code"="iso3c")) 
 
 anti_dat_bivar_map <- all_dat_bivar %>%
   anti_join(country_lookup, by = "iso3c") %>%
   rename(iso_code = iso3c)
+
+# check
+dat_bivar_map %>% filter(iso_code %in% c("FRA","ISL"))
+anti_dat_bivar_map %>% filter(iso_code %in% c("FRA","ISL"))
 
 # Join in plotting data (fill and point)
 world_shp_data <- world_shp %>%
@@ -2264,6 +2267,12 @@ anti_world_shp_data <- world_shp %>%
   # Plotting colour for each country
   dplyr::full_join(anti_dat_bivar_map, by = c("iso_a3"="iso_code")) %>%
   sf::st_transform(crs = PROJ)
+
+# check
+anti_dat_bivar_map%>%filter(iso_code=="ISL")
+dat_bivar_map%>%filter(iso_code=="ISL")
+world_shp_data %>% filter(iso_a3%in%c("FRA","ISL")) %>% select(iso_a3, n_articles_country,fill)
+anti_world_shp_data %>% filter(iso_a3%in%c("FRA","ISL")) %>% select(iso_a3, fill)
 
 
 # Reproject and format world shapefile
@@ -2327,7 +2336,7 @@ gov_fishV_bivar_map <- ggplot2::ggplot() +
 
 
 
-gov_fishV_bivar_map
+# gov_fishV_bivar_map
 
 
 
@@ -2364,7 +2373,7 @@ anti_gov_fishV_bivar_map <- ggplot2::ggplot() +
 
 
 
-anti_gov_fishV_bivar_map
+# anti_gov_fishV_bivar_map
     
 
 ## Format panels with legend
