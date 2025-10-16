@@ -370,8 +370,9 @@ id_country_data <- id_country %>%
 summary(id_country_data)
 
 all_country_data <- wbi_indicator %>%
-  inner_join(fish_vul, by = c("code" = "adm0")) %>%
+  full_join(fish_vul, by = c("code" = "adm0")) %>%
   rename(iso3c = code)
+
 
 anti_id_country_data <- all_country_data %>%
   anti_join(country_lookup, by = c("iso3c" = "iso3c")) 
@@ -1768,8 +1769,13 @@ world_shp <- ne_countries(returnclass = "sf", scale="large")
 
 # Join in plotting data (fill and point)
 data_map <- world_shp %>%
-  dplyr::full_join(wbi_plt_df, by = c("iso_a3"="code")) %>%
+  dplyr::full_join(wbi_plt_df, by = c("iso_a3_eh"="code")) %>%
   sf::st_transform(crs = PROJ)
+
+# check
+world_shp %>% filter(adm0_a3 == "FRA") %>% select(adm0_a3, iso_a3_eh)
+wbi_plt_df%>% filter(code=="FRA")%>% select(`Combined metric`)
+data_map %>% filter(adm0_a3=="FRA") %>% select(`Combined metric`)
 
 # reproject
 data_map <- try_format_data2map(input_args = list(
@@ -1777,7 +1783,8 @@ data_map <- try_format_data2map(input_args = list(
   PROJ = PROJ
   )
 )
-
+# check
+data_map$data %>% filter(adm0_a3=="FRA") %>% select(`Combined metric`)
 
 ## Plot
 wbi_ggps <- list()
@@ -1879,6 +1886,10 @@ world_shp <- ne_countries(returnclass = "sf", scale="large")
 
 
 ## Calculate number of articles 
+
+# check
+id_country_data %>% filter(iso3c=="FRA")
+anti_id_country_data %>% filter(iso3c=="FRA")
 
 # Cut axes variables by quantile
 dat_bivar <- id_country_data %>%
@@ -2006,9 +2017,23 @@ dat_bivar_map <- dat_bivar_sum %>%
 
 # Join in plotting data (fill and point)
 world_shp_data <- world_shp %>%
-  dplyr::full_join(dat_bivar_map, by = c("iso_a3"="iso_code")) %>%
-  left_join(dat_country_sum, by = c("iso_a3"="iso3c"))%>%
+  dplyr::full_join(dat_bivar_map, by = c("iso_a3_eh"="iso_code")) %>%
+  left_join(dat_country_sum, by = c("iso_a3_eh"="iso3c"))%>%
   sf::st_transform(crs = PROJ)
+
+
+# # Join in plotting data (fill and point)
+# data_map <- world_shp %>%
+#   dplyr::full_join(wbi_plt_df, by = c("iso_a3_eh"="code")) %>%
+#   sf::st_transform(crs = PROJ)
+# 
+# check
+
+world_shp_data %>% filter(adm0_a3 == "FRA") %>% select(adm0_a3, iso_a3_eh, n_articles_country)
+# wbi_plt_df%>% filter(code=="FRA")%>% select(`Combined metric`)
+# data_map %>% filter(adm0_a3=="FRA") %>% select(`Combined metric`)
+
+
 
 
 # Reproject and format world shapefile
@@ -2117,8 +2142,8 @@ ggplot(bivariate_color_scale_plt, aes(group_x, group_y,fill=fill))+geom_tile()+s
 ## Calculate number of articles 
 
 # Cut axes variables by quantile
-# fv_cuts <- quantile(all_country_data$fishery_vulnerability, probs = seq(0, 1, 0.1), na.rm = TRUE)
-# gi_cuts <- quantile(all_country_data$governance_indicator, probs = seq(0, 1, 0.1), na.rm = TRUE)
+fv_cuts <- quantile(all_country_data$fishery_vulnerability, probs = seq(0, 1, 0.1), na.rm = TRUE)
+gi_cuts <- quantile(all_country_data$governance_indicator, probs = seq(0, 1, 0.1), na.rm = TRUE)
 
 all_dat_bivar <- all_country_data %>%
   mutate(
