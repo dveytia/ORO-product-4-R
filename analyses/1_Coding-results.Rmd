@@ -1701,9 +1701,10 @@ petal_df <- join_oro_with_multilabels(
   
 
 
+
 # Format for ggplot
 allAxisCols <- axisCols
-allAxisColsLabs <- c("Governance\nbody\nscale","Law","Spatial\nscale","Time\nscale")
+allAxisColsLabs <- c("Governance\nbody scale","Law","Spatial\nscale","Time\nscale")
 
 ymn <- floor(min(unlist(c(petal_df[,allAxisCols])), na.rm=T))
 ymx <- ceiling(max(unlist(c(petal_df[,allAxisCols])), na.rm=T))
@@ -1717,27 +1718,48 @@ petal_df <- petal_df %>%
       category, 
       levels = c("governance_body", "rules_of_law", "spatial_scale", "time_scale"),
       labels = allAxisColsLabs
-    )
+    ),
+    id = as.numeric(factor(category))
   )
 
 # Label positions: use max value per category so labels are outside all petals
 label_df <- petal_df %>%
   group_by(category) %>%
-  summarise(value = max(value)) %>%
+  summarise(value = max(value, na.rm=T)) %>%
   mutate(id = as.numeric(factor(category))) %>%
-  mutate(angle = 90 - 360 * (id - 0.5) / n() + 90) %>%
+  mutate(angle = 360 * (id - 0.5) / n() + 360) %>%
   mutate(angle = ifelse(angle > 90 & angle < 270 | angle < -90, angle + 180, angle),
            hjust = 0.5, 
          )
+label_df <- petal_df %>%
+  group_by(category) %>%
+  summarise(value = max(value, na.rm=T)) %>%
+  mutate(
+    id = as.numeric(factor(category, levels = levels(petal_df$category))),
+    # midpoint of each bar in radial coordinates
+    angle_raw = (360 * (id - 0.5) / nlevels(petal_df$category))-135,
+    # flip text that would be upside-down
+    angle = ifelse(angle_raw > 90 & angle_raw < 270,
+                   angle_raw + 180,
+                   angle_raw),
+    hjust = ifelse(angle_raw > 90 & angle_raw < 270, 1, 0)
+  ) 
+
+label_df
 
 
 petal_ggp <- ggplot(petal_df, aes(x = category, y = value, fill = category)) +
   facet_wrap(vars(oro_type), labeller = label_wrap_gen(width=30))+
-  geom_col(width = 1, color = "white") +
-
-  coord_polar(clip = "off") +
+  geom_col(width = 1, color = "white", position = position_identity()) +
+  coord_radial(theta = "x", start = 0, thetalim = c(0,4), clip="off", expand = FALSE)+
+  # labels
+  geom_text(data = label_df,
+            aes(x = category, y = value + 1,
+                label = category, angle = angle),
+            hjust = 0.5, vjust=0, inherit.aes = FALSE, size = 2.5) +
   scale_y_continuous(
-    breaks = grid_lines
+    breaks = grid_lines,
+    expand = expansion(c(0,0.1))
   )+
   geom_text(
     data = data.frame(
@@ -1753,28 +1775,23 @@ petal_ggp <- ggplot(petal_df, aes(x = category, y = value, fill = category)) +
   theme(
     legend.position = "none",
     axis.text.y = element_blank(),
-    axis.text.x = element_text(margin = margin(t=20), vjust=0),
-    strip.text = element_text(size=9),
+    axis.text.x = element_blank(), #element_text(margin = margin(t=-5), vjust=0, hjust=1),
+    strip.text = element_text(size=10),
     axis.title = element_blank(),
-    # panel.grid.minor.y = element_blank(),
+   
     panel.grid.major.y = element_line(colour = "lightgrey", linewidth = 0.5),
+    panel.grid.minor.y = element_blank(),
 
-    panel.grid.major.x = element_blank()
+    panel.grid.major.x = element_blank(),
+ 
+    panel.spacing = unit(1, "lines")
   )
 
-petal_ggp
+# petal_ggp
 
-
-## Save plot
 
 ggsave(
-  here::here("figures/supplemental/petal_plot_oro_ranking.png"),
-  petal_ggp,
-  width = 6, height = 7.5, dpi=600
-)
-
-ggsave(
-  here::here("figures/supplemental/petal_plot_oro_ranking.pdf"),
+  here::here("figures/main/petal_plot_oro_ranking.pdf"),
   petal_ggp,
   width = 6, height = 7.5
 )
