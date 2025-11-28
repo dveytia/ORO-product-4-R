@@ -543,6 +543,10 @@ oro_count_ggp <- oro_df %>%
   # ) %>%
   ggplot()+
   geom_col(aes(x=oro_type, y=n, fill = oro_type)) +
+  geom_text(aes(x=oro_type, y=n, 
+                label = n), 
+            size=3, vjust=0)+
+  coord_cartesian(clip="off")+
   scale_fill_manual(
     values = oroTypeAes$col,
     breaks = oroTypeAes$levels,
@@ -574,6 +578,10 @@ oro_ggp <- oro_df %>%
   # ) %>%
   ggplot()+
   geom_col(aes(x=oro_type, y=weightedSum, fill = oro_type)) +
+  geom_text(aes(x=oro_type, y=weightedSum, 
+                label = scales::number(weightedSum, accuracy = 0.1)), 
+            size=3, vjust=0)+
+  coord_cartesian(clip="off")+
   scale_fill_manual(
     values = oroTypeAes$col,
     breaks = oroTypeAes$levels,
@@ -592,8 +600,8 @@ oro_ggp
 
 
 
-plotList = list(oro_count_ggp + theme(plot.margin = unit(rep(0,4), units = "cm")), 
-                          oro_ggp + theme(plot.margin = unit(rep(0,4), units = "cm"))
+plotList = list(oro_count_ggp + theme(plot.margin = unit(rep(0.5,4), units = "cm")), 
+                          oro_ggp + theme(plot.margin = unit(rep(0.5,4), units = "cm"))
                           )
 combined_patchwork <- wrap_plots(plotList, ncol = 2) 
 
@@ -604,7 +612,7 @@ ggsave(here::here("figures/supplemental/oro_type_barplot_count_v_weighted.pdf"),
 ggsave(
   here::here("figures/supplemental/oro_barplot.pdf"),
   plot = oro_ggp,
-  width = 5, height=4.5
+  width = 6, height=5
 )
 ```
 
@@ -673,6 +681,12 @@ ggsave(
   plot= pairwise_interactions_ggp,
   width = 4.5, height=4,
   dpi=600
+)
+
+ggsave(
+  here::here("figures/supplemental/pairwise_oroInteractions_heatmap.pdf"),
+  plot= pairwise_interactions_ggp,
+  width = 4.5, height=4
 )
 
 
@@ -832,12 +846,21 @@ continent_bar_ggp1 <- ggplot(data = continent_oro %>%
                               summarise(
                                 weightedSum = sum(weightedSum, na.rm=T)
                               ), 
-                            aes(x=label, y = weightedSum, fill = oro_type))+
+                            aes(x=label, y = weightedSum))+
   scale_fill_manual(
     breaks = oroTypeAes$levels,
     values = oroTypeAes$col
   )+
-  geom_col()+
+  geom_col(aes(fill = oro_type))+
+  # put continent sums at the top
+  geom_text(
+    data = continent_oro %>%
+      group_by(label) %>%
+      summarise(weightedSum = sum(weightedSum, na.rm=T)),
+    aes(label = scales::number(weightedSum, accuracy = 0.1)),
+    vjust=0, size= 3
+  )+
+  coord_cartesian(clip="off")+
   guides(fill=guide_legend(nrow=4))+
   labs(
     y="N articles (weighted)",
@@ -845,7 +868,6 @@ continent_bar_ggp1 <- ggplot(data = continent_oro %>%
     x="Continent"
 
   )+
-
   theme_minimal(base_size = 10)+
   theme(
     plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm"),
@@ -861,9 +883,18 @@ continent_bar_ggp2 <- ggplot(data = continent_oro %>%
                               summarise(
                                 weightedSum = sum(weightedSum, na.rm=T)
                               ), 
-                            aes(x=oro_type, y = weightedSum, fill = label))+
+                            aes(x=oro_type, y = weightedSum))+
   scale_fill_manual(values = level_pal)+
-  geom_col()+
+  geom_col(aes(fill = label))+
+  # put continent sums at the top
+  geom_text(
+    data = continent_oro %>%
+      group_by(oro_type) %>%
+      summarise(weightedSum = sum(weightedSum, na.rm=T)),
+    aes(label = scales::number(weightedSum, accuracy = 0.1)),
+    vjust=0, size= 3
+  )+
+  coord_cartesian(clip="off")+
   guides(fill=guide_legend(nrow=3))+
   labs(
     y="N articles (weighted)",
@@ -892,8 +923,17 @@ type_method_joined <- join_oro_with_label(oro_df, codedVars, study_method,
 method_pal <- c(studyMethodAes$col, "grey")
 
 
-method_ggp <- ggplot(type_method_joined, aes(x=oro_type, y=weightedSum, fill = study_method))+
-  geom_col(position="stack")+
+method_ggp <- ggplot(type_method_joined, aes(x=oro_type, y=weightedSum))+
+  geom_col(position="stack", aes(fill = study_method))+
+  # put continent sums at the top
+  geom_text(
+    data = type_method_joined %>%
+      group_by(oro_type) %>%
+      summarise(weightedSum = sum(weightedSum, na.rm=T)),
+    aes(label = scales::number(weightedSum, accuracy = 0.1)),
+    vjust=0, size= 3
+  )+
+  coord_cartesian(clip="off")+
   labs(
     x = "ORO type",
     y="N articles (weighted)",
@@ -996,6 +1036,14 @@ oro_cont_cid <- oro_cont_cid %>%
 
 cid_continent_ggp <- ggplot()+
   geom_col(data = oro_cont_cid , aes(x=climatic_impact_driver, y= weightedSum, fill = oro_type))+
+  geom_text(
+    data = oro_cont_cid %>%
+      group_by(climatic_impact_driver, continent) %>%
+      summarise(weightedSum = sum(weightedSum, na.rm=T)), 
+    aes(x=climatic_impact_driver, y= weightedSum, label = scales::number(weightedSum, accuracy = 0.1)),
+    vjust = 0, size=3
+  )+
+  coord_cartesian(clip="off")+
   facet_wrap(vars(continent), ncol = 2, scales="free_y")+
   scale_fill_manual(
     values = oroTypeAes$col,
@@ -1016,8 +1064,8 @@ cid_continent_ggp <- ggplot()+
     aes(x=x, label=label, y=Inf),
     hjust=0.5, vjust = 1, size=3
   )+
-  scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.25)))+
-  
+  scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.3)))+
+  guides(fill = guide_legend(nrow=2))+
   labs(
     x = "Climatic impact driver",
     y="N articles (weighted)",
@@ -1026,7 +1074,9 @@ cid_continent_ggp <- ggplot()+
   theme_bw(base_size = 11)+
   theme(
     axis.text.x = element_text(angle=45, hjust=1),
-    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
+    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm"),
+    legend.position = "bottom",
+    legend.text = element_text(size=8)
   )
 
 cid_continent_ggp
@@ -1312,12 +1362,14 @@ scale_scatter_ggp <- ggplot(
   ) +
   facet_wrap(vars(oro_type), labeller = label_wrap_gen(width = 30))+
   geom_tile(aes(x=time_scale, y=spatial_scale, fill = weightedSum))+
+  geom_text(aes(x=time_scale, y=spatial_scale, label = scales::number(weightedSum, accuracy = 0.1)),
+            col = "red", size = 3)+
   # scale_fill_viridis_c()+
   scale_fill_gradientn(
     colors = viridis::viridis(n=10),
     values = scales::rescale(exp((1:10)/10))
   )+
-  theme_minimal(base_size = 10)+
+  theme_minimal(base_size = 11)+
   labs(
     x = "Time scale",
     y = "Spatial scale",
@@ -1325,7 +1377,10 @@ scale_scatter_ggp <- ggplot(
   )+
   theme(
     axis.text.x = element_text(angle=90, hjust=1, vjust = 0.5),
-    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
+    plot.margin = unit(c(0.2, 0.5,0.5, 0.5), units = "cm"),
+    legend.position = "bottom",
+    panel.spacing = unit(1.5, "lines"),
+    strip.text = element_text(size=12)
   )
 
 scale_scatter_ggp
@@ -1334,7 +1389,7 @@ scale_scatter_ggp
 ggsave(
   here::here("figures/supplemental/time_vs_space_heatmaps.pdf"),
   plot = scale_scatter_ggp,
-  width = 7, height=6
+  width = 7, height=7
 )
 
 ```
@@ -2151,8 +2206,11 @@ combined_plots <- wrap_plots(
   plot_annotation(tag_levels = "a")
 
 
+ggsave(here::here("figures/supplemental/all_wbi_indicator_maps.pdf"),
+       combined_plots, width = 8, height = 12)
+
 ggsave(here::here("figures/supplemental/all_wbi_indicator_maps.png"),
-       combined_plots, width = 8, height = 12, dpi = 600)
+       combined_plots, width = 8, height = 12, dpi=600)
 
 
 ```
@@ -2705,11 +2763,11 @@ map_bi <- wrap_plots(
 )
 
 ## Save plot
-ggsave(here::here("figures/supplemental/governance_v_fisheryVulnerability_bivarMap_anti.png"), 
+ggsave(here::here("figures/main/governance_v_fisheryVulnerability_bivarMap_anti.png"), 
        plot=map_bi,
        width = 10, height = 12, dpi=300)
 
-ggsave(here::here("figures/supplemental/governance_v_fisheryVulnerability_bivarMap_anti.pdf"), 
+ggsave(here::here("figures/main/governance_v_fisheryVulnerability_bivarMap_anti.pdf"), 
        plot=map_bi,
        width = 10, height = 12)
 ```
@@ -2822,6 +2880,26 @@ Instead, focus on predictors of positive outcomes.
 
 
 ```{r format binary and all outcome model data}
+
+# calculate outcomes
+oroOutcomes <- expand_labels_with_weight(df = studyResults, id_col = article_outcome_id, list_col = oro_type) %>%
+  left_join(studyResults %>% select(id, article_outcome_id,result_type, result_effect)) %>%
+  left_join(codedVars %>% select(id, evidence_type), by = "id") %>%
+  rename(
+    oro_type = label
+  ) %>%
+  mutate(
+    oro_type = factor(
+      oro_type,
+      levels = oroTypeAes$levels
+    ),
+    evidence_type = factor(
+      evidence_type,
+      levels=c("Quantitative metric","Social empirical","Qualitative - other")
+    )
+  )
+
+
 # ## expand result_type [social, ecological, etc..] labels
 # studyResults_bin <- expand_labels(studyResults,id_col = id, list_col = result_type) %>%
 #   select(id, parsed_labels, result_effect_regrouped)%>%
@@ -2888,6 +2966,8 @@ result_model_df <- join_oro_with_multilabels_long(
     ))
 
 summary(result_model_df)
+
+
 
 ```
 
@@ -3068,10 +3148,10 @@ combined_gbm_plot <- wrap_plots(gbm_plot_list, ncol = 3) +
   plot_annotation(tag_levels = 'a')
 
 # Save to PDF
-ggsave(here::here("figures/supplemental/gbm_partial_dependence_plots.pdf"),
+ggsave(here::here("figures/main/gbm_partial_dependence_plots.pdf"),
        combined_gbm_plot, width = 10, height = 11)
 
-ggsave(here::here("figures/supplemental/gbm_partial_dependence_plots.png"),
+ggsave(here::here("figures/main/gbm_partial_dependence_plots.png"),
        combined_gbm_plot, width = 10, height = 11, dpi=600)
 
 
@@ -3093,6 +3173,24 @@ Rationale: are social outcomes (e.g. being able to stay fishing -- important to 
 
 
 ```{r barplot of trade offs}
+# calculate outcomes
+oroOutcomes <- expand_labels_with_weight(df = studyResults, id_col = article_outcome_id, list_col = oro_type) %>%
+  left_join(studyResults %>% select(id, article_outcome_id,result_type, result_effect)) %>%
+  left_join(codedVars %>% select(id, evidence_type), by = "id") %>%
+  rename(
+    oro_type = label
+  ) %>%
+  mutate(
+    oro_type = factor(
+      oro_type,
+      levels = oroTypeAes$levels
+    ),
+    evidence_type = factor(
+      evidence_type,
+      levels=c("Quantitative metric","Social empirical","Qualitative - other")
+    )
+  )
+
 tradeOffs <- expand_labels_with_weight(df = oroOutcomes, id_col = article_outcome_id, list_col = result_type) %>%
   left_join(oroOutcomes %>% select(article_outcome_id, id, oro_type, evidence_type, result_effect, weight) %>% rename(oro_weight = weight),
             relationship = "many-to-many") %>%
@@ -3164,8 +3262,10 @@ tradeoff_ggp <- ggplot(resultTradeOffs_df, aes(x=result_type))+
   scale_y_continuous(expand = expansion(mult=c(0.15,0.15)))+
   geom_rect(aes(x=result_type, width=0.7, ymin = Negative, ymax = 0), fill="#d01c8b")+
   geom_rect(aes(x=result_type, width=0.7, ymin = 0, ymax = Positive), fill="#4dac26")+
-  geom_text(aes(y=Positive, label = Positive), hjust=0, size=3)+
-  geom_text(aes(y=Negative, label = Negative), hjust=1, size=3)+
+  geom_text(data = resultTradeOffs_df %>% filter(0 < Positive),
+            aes(y=Positive, label = Positive), hjust=0, size=3)+
+  geom_text(data = resultTradeOffs_df %>% filter(Negative < 0),
+            aes(y=Negative, label = Negative), hjust=1, size=3)+
       geom_hline(yintercept = 0)+
       labs(
         x = "Adaptation outcome type",
@@ -3179,7 +3279,7 @@ tradeoff_ggp <- ggplot(resultTradeOffs_df, aes(x=result_type))+
 tradeoff_ggp
 
 ggsave(
-  filename = here::here("figures/supplemental/coben_disben_barplots.pdf"),
+  filename = here::here("figures/main/coben_disben_barplots.pdf"),
   tradeoff_ggp,
   width = 6, height=5
 )
