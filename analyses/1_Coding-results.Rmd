@@ -507,7 +507,7 @@ n_oro_per_paper_ggp <- oro_df %>%
   ggplot(aes(x=n))+
   geom_histogram(binwidth = 0.5)+
   labs(
-    x = "N OROs/article",
+    x = "N Options/article",
     y = "N articles"
   )+
   scale_x_continuous(breaks = 1:6)+
@@ -553,7 +553,7 @@ oro_count_ggp <- oro_df %>%
     guide="none"
   )+
   labs(
-    x = "ORO type",
+    x = "Option type",
     y="N articles"
   )+
   theme_minimal(base_size = 12)+
@@ -588,7 +588,7 @@ oro_ggp <- oro_df %>%
     guide="none"
   )+
   labs(
-    x = "ORO type",
+    x = "Option type",
     y="N articles (weighted)"
   )+
   theme_minimal(base_size = 12)+
@@ -864,7 +864,7 @@ continent_bar_ggp1 <- ggplot(data = continent_oro %>%
   guides(fill=guide_legend(nrow=4))+
   labs(
     y="N articles (weighted)",
-    fill = "ORO type",
+    fill = "Option\ntype",
     x="Continent"
 
   )+
@@ -899,7 +899,7 @@ continent_bar_ggp2 <- ggplot(data = continent_oro %>%
   labs(
     y="N articles (weighted)",
     fill = "Continent",
-    x="ORO type"
+    x="Option type"
 
   )+
 
@@ -935,7 +935,7 @@ method_ggp <- ggplot(type_method_joined, aes(x=oro_type, y=weightedSum))+
   )+
   coord_cartesian(clip="off")+
   labs(
-    x = "ORO type",
+    x = "Option type",
     y="N articles (weighted)",
     fill = "Data\ntype"
   )+
@@ -1069,7 +1069,7 @@ cid_continent_ggp <- ggplot()+
   labs(
     x = "Climatic impact driver",
     y="N articles (weighted)",
-    fill = "ORO type"
+    fill = "Option\ntype"
   )+
   theme_bw(base_size = 11)+
   theme(
@@ -1163,13 +1163,46 @@ type_spatial_scale_joined <- reshape2::melt(type_spatial_scale_joined,
   )
 
 
+
+# Plot with number and proportion
 spatial_scale_ggp <- ggplot(type_spatial_scale_joined, aes(x=label, y=Value, fill = oro_type))+
   facet_wrap(vars(Metric), scales = "free_y", ncol=1)+
   geom_col(position="stack")+
   labs(
     x = "Spatial scale",
     y="Value",
-    fill = "ORO type"
+    fill = "Option type"
+  )+
+  scale_fill_manual(
+    values = oroTypeAes$col,
+    breaks = oroTypeAes$levels
+  )+
+  theme_bw(base_size = 12)+
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1),
+    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
+  )
+
+# Or just number
+spatial_scale_ggp <- ggplot(type_spatial_scale_joined %>%
+                              filter(Metric == "N articles (weighted)"), 
+                            aes(x=label, y=Value, fill = oro_type))+
+  geom_col(position="stack")+
+  geom_text(
+    data = type_spatial_scale_joined %>%
+      filter(Metric == "N articles (weighted)") %>%
+      group_by(label) %>%
+      summarise(
+        Value = sum(Value, na.rm = T)
+      ),
+    aes(x=label, y=Value, label = scales::number(Value)),
+    size = 3, vjust=0, inherit.aes=F
+  )+
+  coord_cartesian(clip="off")+
+  labs(
+    x = "Spatial scale",
+    y="N articles (weighted)",
+    fill = "Option type"
   )+
   scale_fill_manual(
     values = oroTypeAes$col,
@@ -1182,7 +1215,6 @@ spatial_scale_ggp <- ggplot(type_spatial_scale_joined, aes(x=label, y=Value, fil
   )
 
 spatial_scale_ggp
-
 
 
 ## Time scale panels
@@ -1217,14 +1249,14 @@ type_time_scale_joined <- reshape2::melt(type_time_scale_joined,
                     labels = c("N articles (weighted)", "Proportion"))
   )
 
-
+# with number and proportion
 time_scale_ggp <- ggplot(type_time_scale_joined, aes(x=label, y=Value, fill = oro_type))+
   facet_wrap(vars(Metric), scales = "free_y", ncol=1)+
   geom_col(position="stack")+
   labs(
     x = "Time scale",
     y="Value",
-    fill = "ORO type"
+    fill = "Option type"
   )+
   scale_fill_manual(
     values = oroTypeAes$col,
@@ -1235,6 +1267,39 @@ time_scale_ggp <- ggplot(type_time_scale_joined, aes(x=label, y=Value, fill = or
     axis.text.x = element_text(angle=45, hjust=1),
     plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
   )
+
+
+# Or just number
+time_scale_ggp <- ggplot(type_time_scale_joined %>%
+                              filter(Metric == "N articles (weighted)"), 
+                            aes(x=label, y=Value, fill = oro_type))+
+  geom_col(position="stack")+
+  geom_text(
+    data = type_time_scale_joined %>%
+      filter(Metric == "N articles (weighted)") %>%
+      group_by(label) %>%
+      summarise(
+        Value = sum(Value, na.rm = T)
+      ),
+    aes(x=label, y=Value, label = scales::number(Value)),
+    size = 3, vjust=0, inherit.aes=F
+  )+
+  coord_cartesian(clip="off")+
+  labs(
+    x = "Time scale",
+    y="N articles (weighted)",
+    fill = "Option type"
+  )+
+  scale_fill_manual(
+    values = oroTypeAes$col,
+    breaks = oroTypeAes$levels
+  )+
+  theme_bw(base_size = 12)+
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1),
+    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
+  )
+
 
 time_scale_ggp
 
@@ -1275,14 +1340,14 @@ type_governance_joined <- reshape2::melt(type_governance_joined,
                     labels = c("N articles (weighted)", "Proportion"))
   )
 
-
+# WIth n articles and proportion
 governance_ggp <- ggplot(type_governance_joined, aes(x=label, y=Value, fill = oro_type))+
   facet_wrap(vars(Metric), scales = "free_y", ncol=1)+
   geom_col(position="stack")+
   labs(
     x = "Governance body",
     y="Value",
-    fill = "ORO type"
+    fill = "Option type"
   )+
   scale_fill_manual(
     values = oroTypeAes$col,
@@ -1293,6 +1358,39 @@ governance_ggp <- ggplot(type_governance_joined, aes(x=label, y=Value, fill = or
     axis.text.x = element_text(angle=45, hjust=1),
     plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
   )
+
+
+# Or just number
+governance_ggp <- ggplot(type_governance_joined %>%
+                              filter(Metric == "N articles (weighted)"), 
+                            aes(x=label, y=Value, fill = oro_type))+
+  geom_col(position="stack")+
+  geom_text(
+    data = type_governance_joined %>%
+      filter(Metric == "N articles (weighted)") %>%
+      group_by(label) %>%
+      summarise(
+        Value = sum(Value, na.rm = T)
+      ),
+    aes(x=label, y=Value, label = scales::number(Value)),
+    size = 3, vjust=0, inherit.aes=F
+  )+
+  coord_cartesian(clip="off")+
+  labs(
+    x = "Governance body",
+    y="N articles (weighted)",
+    fill = "Option type"
+  )+
+  scale_fill_manual(
+    values = oroTypeAes$col,
+    breaks = oroTypeAes$levels
+  )+
+  theme_bw(base_size = 12)+
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1),
+    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
+  )
+
 
 governance_ggp
 
@@ -1307,11 +1405,13 @@ plotList = list(
   time_scale_ggp+theme(legend.position = "none", plot.margin = unit(rep(0.2,4), units="cm")),
   governance_ggp+theme(plot.margin = unit(rep(0.2,4), units = "cm"))
   )
-combined_patchwork <- wrap_plots(plotList, ncol = 3) + 
-  plot_annotation(tag_levels = 'a')
+combined_patchwork <- wrap_plots(plotList, ncol = 3, guides = "collect") + 
+  plot_annotation(tag_levels = 'a') &
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) &
+  theme(legend.position = "bottom")
 
 ggsave(here::here("figures/supplemental/spatial_time_scale_governance_barplots.pdf"),
-       combined_patchwork, width = 15, height = 6)
+       combined_patchwork, width = 9, height = 5)
 
 
 
@@ -3023,7 +3123,11 @@ gbm_summary <- summary(gbm_fit,n.trees=best.iter) %>%
   as.data.frame()%>%
   rename(Variable = var, `Relative influence`= rel.inf) %>%
   mutate(
-    `Variable name`=stringr::str_to_sentence(gsub("_"," ", Variable))
+    `Variable name`=stringr::str_to_sentence(gsub("_"," ", Variable)),
+    `Variable name` = case_when(
+      grepl("ORO ", `Variable name`, ignore.case=TRUE) ~ "Adaptation option",
+      TRUE ~ `Variable name`
+    )
   )
   
 gbm_summary 
@@ -3046,7 +3150,7 @@ gbm_plot_list <- lapply(1:nrow(gbm_summary), function(i) {
   
   if(class(result_gbm_df.train[,var_name])=="numeric"){
     ## If numeric
-    pd_data <- plot.gbm(gbm_fit, var_name, n.trees = best.iter, return.grid = TRUE) %>%
+    pd_data <- plot.gbm(gbm_fit, var_name, n.trees = best.iter, return.grid = TRUE, type="response") %>%
       mutate(
         x = as.numeric(paste0(!!var_name_sym))
         
@@ -3063,7 +3167,7 @@ gbm_plot_list <- lapply(1:nrow(gbm_summary), function(i) {
     )
     
     # Create ggplot
-    ggplot(pd_data, aes(x = x, y = prob)) +
+    ggplot(pd_data, aes(x = x, y = y)) +
       geom_ribbon(
         data = sample_dens,
         aes(x=x, ymax = density_scaled),
@@ -3101,7 +3205,7 @@ gbm_plot_list <- lapply(1:nrow(gbm_summary), function(i) {
     }
     
   
-    pd_data <- plot.gbm(gbm_fit, var_name, n.trees = best.iter, return.grid = TRUE) %>%
+    pd_data <- plot.gbm(gbm_fit, var_name, n.trees = best.iter, return.grid = TRUE, type="response") %>%
       left_join(n_samples, by = var_name) %>%
       mutate(
         xlabel = paste0(!!var_name_sym, "\n(n = ", Freq,")")
