@@ -3180,7 +3180,7 @@ gbm_plot_list <- lapply(1:nrow(gbm_summary), function(i) {
       )+
       labs(
         title = var_label,
-        y = "Predicted adaptation effect",
+        y = "Probablity of adaptive outcome",
         x=""
       ) +
       scale_y_continuous(
@@ -3189,6 +3189,7 @@ gbm_plot_list <- lapply(1:nrow(gbm_summary), function(i) {
       coord_cartesian(clip="off")+
       theme_minimal(base_size = 10)+
       theme(
+        axis.title = element_text(size=9),
         axis.text.x = element_text(angle = 45, hjust=1)
       )
     
@@ -3226,7 +3227,7 @@ gbm_plot_list <- lapply(1:nrow(gbm_summary), function(i) {
       )+
       labs(
         title = var_label,
-        y = "Predicted adaptation effect",
+        y = "Probablity of adaptive outcome",
         x=""
       ) +
       # scale_x_discrete(
@@ -3240,6 +3241,7 @@ gbm_plot_list <- lapply(1:nrow(gbm_summary), function(i) {
       coord_cartesian(clip="off")+
       theme_minimal(base_size = 10)+
       theme(
+        axis.title = element_text(size=9),
         axis.text.x = element_text(angle = 45, hjust=1)
       )
   } ## End of if categorical
