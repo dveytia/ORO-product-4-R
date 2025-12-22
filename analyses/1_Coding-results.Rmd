@@ -3394,6 +3394,169 @@ ggsave(
 
 ```
 
+```{r outcome dimensions by ORO}
+
+outcomeDimension_by_ORO <- tradeOffs %>%
+  filter(result_effect %in% c("Positive","Negative")) %>%
+  mutate(
+    result_effect = factor(result_effect, levels = c("Positive","Negative"))
+  ) %>%
+  group_by(oro_type, result_type, result_effect) %>%
+  summarise(
+    weightedSum = sum(weight, na.rm = T)
+  )
+  
+
+resultTypes <- levels(tradeOffs$result_type)
+oros <- levels(tradeOffs$oro_type)
+resultTradeOffs_ORO_df <- data.frame()
+for(r in 1:length(resultTypes)){
+  for(o in 1:length(oros)){
+    posIds <- tradeOffs %>%
+      filter(result_type == resultTypes[r], #oro_type == oros[o], 
+             result_effect=="Positive")
+    posIds <- unique(posIds$id)
+    
+    dfTemp <- tradeOffs %>%
+      filter(id %in% posIds, 
+             result_type != resultTypes[r],# oro_type == oros[o], 
+             result_effect!="Neutral")
+    if(nrow(dfTemp) < 1){
+      next
+    }
+    dfTemp<- dfTemp%>%
+      mutate(
+        result_effect = factor(result_effect, levels = c("Positive","Negative"))
+      ) %>%
+      group_by(result_type, result_effect) %>%
+      summarise(
+        weightedSum = sum(weight, na.rm = T)
+      )%>%
+      complete(result_effect, fill = list(weightedSum = NA)) %>%
+      pivot_wider(
+        names_from = result_effect,
+        values_from = weightedSum
+      ) %>%
+      mutate(
+        Negative = Negative*-1
+      )%>%
+      replace_na(list(Positive = 0, Negative = 0))%>%
+      mutate(
+        oro_type = oros[o],
+        positive_result = resultTypes[r]
+      )
+    
+    resultTradeOffs_ORO_df <- resultTradeOffs_ORO_df %>%
+      bind_rows(dfTemp)
+    
+  }
+}
+
+tradeoff_ORO_ggp <- ggplot(resultTradeOffs_ORO_df, aes(x=result_type))+
+  facet_wrap( ~ positive_result, scales = "free_y")+
+  scale_y_continuous(expand = expansion(mult=c(0.15,0.15)))+
+  geom_rect(aes(x=result_type, width=0.7, ymin = Negative, ymax = 0), fill="#d01c8b")+
+  geom_rect(aes(x=result_type, width=0.7, ymin = 0, ymax = Positive), fill="#4dac26")+
+  geom_text(data = resultTradeOffs_df %>% filter(0 < Positive),
+            aes(y=Positive, label = Positive), hjust=0, size=3)+
+  geom_text(data = resultTradeOffs_df %>% filter(Negative < 0),
+            aes(y=Negative, label = Negative), hjust=1, size=3)+
+      geom_hline(yintercept = 0)+
+      labs(
+        x = "Adaptation outcome type",
+        y = "Adaptive outcomes v. trade-off (weighted sum)"
+      )+
+      coord_flip(clip = "off")+
+      theme_minimal(base_size = 10)
+  # theme(
+  #   plot.margin = unit(c(rep(0.2,4)), "cm")
+  # )
+tradeoff_ggp
+
+ggsave(
+  filename = here::here("figures/main/coben_disben_barplots_by_ORO.pdf"),
+  tradeoff_ggp,
+  width = 6, height=5
+)
+
+```
+
+
+```{r trade offs by ORO}
+
+resultTypes <- levels(tradeOffs$result_type)
+oros <- levels(tradeOffs$oro_type)
+resultTradeOffs_ORO_df <- data.frame()
+for(r in 1:length(resultTypes)){
+  for(o in 1:length(oros)){
+    posIds <- tradeOffs %>%
+      filter(result_type == resultTypes[r], oro_type == oros[o], 
+             result_effect=="Positive")
+    posIds <- unique(posIds$id)
+    
+    dfTemp <- tradeOffs %>%
+      filter(id %in% posIds, 
+             result_type != resultTypes[r], oro_type == oros[o], 
+             result_effect!="Neutral")
+    if(nrow(dfTemp) < 1){
+      next
+    }
+    dfTemp<- dfTemp%>%
+      mutate(
+        result_effect = factor(result_effect, levels = c("Positive","Negative"))
+      ) %>%
+      group_by(result_type, result_effect) %>%
+      summarise(
+        weightedSum = sum(weight, na.rm = T)
+      )%>%
+      complete(result_effect, fill = list(weightedSum = NA)) %>%
+      pivot_wider(
+        names_from = result_effect,
+        values_from = weightedSum
+      ) %>%
+      mutate(
+        Negative = Negative*-1
+      )%>%
+      replace_na(list(Positive = 0, Negative = 0))%>%
+      mutate(
+        oro_type = oros[o],
+        positive_result = resultTypes[r]
+      )
+    
+    resultTradeOffs_ORO_df <- resultTradeOffs_ORO_df %>%
+      bind_rows(dfTemp)
+    
+  }
+}
+
+tradeoff_ORO_ggp <- ggplot(resultTradeOffs_ORO_df, aes(x=result_type))+
+  facet_grid(oro_type ~ positive_result, scales = "free_y", labeller = label_wrap_gen(width = 10) )+
+  scale_y_continuous(expand = expansion(mult=c(0.15,0.15)))+
+  geom_rect(aes(x=result_type, width=0.7, ymin = Negative, ymax = 0), fill="#d01c8b")+
+  geom_rect(aes(x=result_type, width=0.7, ymin = 0, ymax = Positive), fill="#4dac26")+
+  geom_text(data = resultTradeOffs_ORO_df %>% filter(0 < Positive),
+            aes(y=Positive, label = scales::number(Positive, accuracy = 0.1)), hjust=0, size=2.5)+
+  geom_text(data = resultTradeOffs_ORO_df %>% filter(Negative < 0),
+            aes(y=Negative, label = scales::number(Negative, accuracy = 0.1)), hjust=1, size=2.5)+
+      geom_hline(yintercept = 0)+
+      labs(
+        x = "Adaptation outcome type",
+        y = "Adaptive outcomes v. trade-off (weighted sum)"
+      )+
+      coord_flip(clip = "off")+
+      theme_minimal(base_size = 9)
+  # theme(
+  #   plot.margin = unit(c(rep(0.2,4)), "cm")
+  # )
+tradeoff_ORO_ggp
+
+ggsave(
+  filename = here::here("figures/main/coben_disben_barplots_by_ORO.pdf"),
+  tradeoff_ORO_ggp,
+  width = 6, height=7.5
+)
+
+```
 
 
 
