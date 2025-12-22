@@ -2831,20 +2831,19 @@ gov_fishV_bivar_map_all <- ggplot2::ggplot() +
 
 
 ## Format panels with legend
+
 map_bi_all <- cowplot::ggdraw() +
-    cowplot::draw_plot(gov_fishV_bivar_map_all,    x = 0.0, y = 0.00, width = 0.7, height = 1.0) +
-    cowplot::draw_plot(bivar_map_legend, x = 0.65, y = 0.3, width = 0.4, height = 0.4)
+    cowplot::draw_plot(gov_fishV_bivar_map_all,   x = 0.0, y = 0.35, width = 1, height = 0.6) +
+    cowplot::draw_plot(bivar_map_legend, x = 0.3, y = 0.0, width = 0.4, height = 0.4)
 
 
-## Save plot
+# save plot
 ggsave(here::here("figures/main/governance_v_fisheryVulnerability_bivarMap_all.png"),
-       plot = map_bi_all, width = 10, height = 5, device = "png", dpi = 350)
-
+       plot = map_bi_all, width = 8, height = 7, device = "png", dpi = 350)
 
 
 ggsave(here::here("figures/main/governance_v_fisheryVulnerability_bivarMap_all.pdf"),
-       plot = map_bi_all, width = 10, height = 5, device = "pdf")
-
+       plot = map_bi_all, width = 8, height = 8, device = "pdf")
 
 ```
 
@@ -3462,17 +3461,19 @@ gbm_plot_list <- lapply(1:nrow(gbm_summary), function(i) {
       )+
       labs(
         title = var_label,
-        y = "Probablity of adaptive outcome",
+        y = "Pr of adaptive outcome",
         x=""
       ) +
       scale_y_continuous(
-        expand = expansion(mult = c(0,0.3))
+        expand = expansion(mult = c(0,0.3)),
+        labels = scales::label_number(accuracy = 0.01)
       )+
       coord_cartesian(clip="off")+
       theme_minimal(base_size = 10)+
       theme(
         axis.title = element_text(size=9),
-        axis.text.x = element_text(angle = 45, hjust=1)
+        axis.text.y = element_text(size=9),
+        axis.text.x = element_text(angle = 45, hjust=1, size=9)
       )
     
   }else{
@@ -3482,10 +3483,25 @@ gbm_plot_list <- lapply(1:nrow(gbm_summary), function(i) {
     as.data.frame() %>%
     rename_with(~ var_name, .cols = "Var1")
     
-    # recalculate counts of n articles from original data ?
-    for(s in 1:nrow(n_samples)){
-      n_samples$Freq[s] <- sum(grepl(as.character(n_samples[s,var_name]), codedVars[[var_name]], fixed = TRUE))
+    # recalculate counts of n articles from original data 
+    if(var_name == "oro_type"){
+      
+      for(s in 1:nrow(n_samples)){
+        oroSamp <- oro_df %>%
+          filter(grepl(as.character(n_samples[s,var_name]), oro_type)) %>%
+          summarise(
+            n = n_distinct(id)
+          )
+        n_samples$Freq[s] <- oroSamp$n
+      }
+      
+    }else{
+      for(s in 1:nrow(n_samples)){
+        n_samples$Freq[s] <- sum(grepl(as.character(n_samples[s,var_name]), codedVars[[var_name]], fixed = TRUE))
+      }
     }
+    
+    
     
   
     pd_data <- plot.gbm(gbm_fit, var_name, n.trees = best.iter, return.grid = TRUE, type="response") %>%
@@ -3509,7 +3525,7 @@ gbm_plot_list <- lapply(1:nrow(gbm_summary), function(i) {
       )+
       labs(
         title = var_label,
-        y = "Probablity of adaptive outcome",
+        y = "Pr of adaptive outcome",
         x=""
       ) +
       # scale_x_discrete(
@@ -3518,13 +3534,15 @@ gbm_plot_list <- lapply(1:nrow(gbm_summary), function(i) {
       #     }
       # )+
       scale_y_continuous(
-        expand = expansion(mult = c(0,0.3))
+        expand = expansion(mult = c(0,0.3)),
+        labels = scales::label_number(accuracy = 0.01)
       )+
       coord_cartesian(clip="off")+
       theme_minimal(base_size = 10)+
       theme(
         axis.title = element_text(size=9),
-        axis.text.x = element_text(angle = 45, hjust=1)
+        axis.text.y = element_text(size=9),
+        axis.text.x = element_text(angle = 45, hjust=1, size=9)
       )
   } ## End of if categorical
   
@@ -3537,10 +3555,10 @@ combined_gbm_plot <- wrap_plots(gbm_plot_list, ncol = 3) +
 
 # Save to PDF
 ggsave(here::here("figures/main/gbm_partial_dependence_plots.pdf"),
-       combined_gbm_plot, width = 10, height = 11)
+       combined_gbm_plot, width = 12, height = 11)
 
 ggsave(here::here("figures/main/gbm_partial_dependence_plots.png"),
-       combined_gbm_plot, width = 10, height = 11, dpi=600)
+       combined_gbm_plot, width = 12, height = 11, dpi=600)
 
 
 ## Assess on the test set
@@ -3676,92 +3694,6 @@ ggsave(
 
 ```
 
-```{r outcome dimensions by ORO}
-
-outcomeDimension_by_ORO <- tradeOffs %>%
-  filter(result_effect %in% c("Positive","Negative")) %>%
-  mutate(
-    result_effect = factor(result_effect, levels = c("Positive","Negative"))
-  ) %>%
-  group_by(oro_type, result_type, result_effect) %>%
-  summarise(
-    weightedSum = sum(weight, na.rm = T)
-  )
-  
-
-resultTypes <- levels(tradeOffs$result_type)
-oros <- levels(tradeOffs$oro_type)
-resultTradeOffs_ORO_df <- data.frame()
-for(r in 1:length(resultTypes)){
-  for(o in 1:length(oros)){
-    posIds <- tradeOffs %>%
-      filter(result_type == resultTypes[r], #oro_type == oros[o], 
-             result_effect=="Positive")
-    posIds <- unique(posIds$id)
-    
-    dfTemp <- tradeOffs %>%
-      filter(id %in% posIds, 
-             result_type != resultTypes[r],# oro_type == oros[o], 
-             result_effect!="Neutral")
-    if(nrow(dfTemp) < 1){
-      next
-    }
-    dfTemp<- dfTemp%>%
-      mutate(
-        result_effect = factor(result_effect, levels = c("Positive","Negative"))
-      ) %>%
-      group_by(result_type, result_effect) %>%
-      summarise(
-        weightedSum = sum(weight, na.rm = T)
-      )%>%
-      complete(result_effect, fill = list(weightedSum = NA)) %>%
-      pivot_wider(
-        names_from = result_effect,
-        values_from = weightedSum
-      ) %>%
-      mutate(
-        Negative = Negative*-1
-      )%>%
-      replace_na(list(Positive = 0, Negative = 0))%>%
-      mutate(
-        oro_type = oros[o],
-        positive_result = resultTypes[r]
-      )
-    
-    resultTradeOffs_ORO_df <- resultTradeOffs_ORO_df %>%
-      bind_rows(dfTemp)
-    
-  }
-}
-
-tradeoff_ORO_ggp <- ggplot(resultTradeOffs_ORO_df, aes(x=result_type))+
-  facet_wrap( ~ positive_result, scales = "free_y")+
-  scale_y_continuous(expand = expansion(mult=c(0.15,0.15)))+
-  geom_rect(aes(x=result_type, width=0.7, ymin = Negative, ymax = 0), fill="#d01c8b")+
-  geom_rect(aes(x=result_type, width=0.7, ymin = 0, ymax = Positive), fill="#4dac26")+
-  geom_text(data = resultTradeOffs_df %>% filter(0 < Positive),
-            aes(y=Positive, label = Positive), hjust=0, size=3)+
-  geom_text(data = resultTradeOffs_df %>% filter(Negative < 0),
-            aes(y=Negative, label = Negative), hjust=1, size=3)+
-      geom_hline(yintercept = 0)+
-      labs(
-        x = "Adaptation outcome type",
-        y = "Adaptive outcomes v. trade-off (weighted sum)"
-      )+
-      coord_flip(clip = "off")+
-      theme_minimal(base_size = 10)
-  # theme(
-  #   plot.margin = unit(c(rep(0.2,4)), "cm")
-  # )
-tradeoff_ggp
-
-ggsave(
-  filename = here::here("figures/main/coben_disben_barplots_by_ORO.pdf"),
-  tradeoff_ggp,
-  width = 6, height=5
-)
-
-```
 
 
 ```{r trade offs by ORO}
@@ -3810,6 +3742,10 @@ for(r in 1:length(resultTypes)){
     
   }
 }
+resultTradeOffs_ORO_df$oro_type <- factor(
+  resultTradeOffs_ORO_df$oro_type,
+  levels = oros
+)
 
 tradeoff_ORO_ggp <- ggplot(resultTradeOffs_ORO_df, aes(x=result_type))+
   facet_grid(oro_type ~ positive_result, scales = "free_y", labeller = label_wrap_gen(width = 10) )+
