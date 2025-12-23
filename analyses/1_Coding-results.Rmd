@@ -2728,21 +2728,22 @@ PROJ = "+proj=robin +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +n
 
 world_shp_data <- world_shp %>%
   # Plotting colour for each country (fill)
-  dplyr::full_join(dat_bivar_map, by = c("iso_a3"="iso_code")) %>%
+  dplyr::full_join(dat_bivar_map, by = c("iso_a3_eh"="iso_code")) %>%
   # Number of articles/country (point size)
-  left_join(dat_country_sum, by = c("iso_a3"="iso3c"))%>%
+  left_join(dat_country_sum, by = c("iso_a3_eh"="iso3c"))%>%
   sf::st_transform(crs = PROJ)
 
 all_world_shp_data <- world_shp %>%
   # Plotting colour for each country
-  dplyr::full_join(all_dat_bivar_map, by = c("iso_a3"="iso_code")) %>%
+  dplyr::full_join(all_dat_bivar_map, by = c("iso_a3_eh"="iso_code")) %>%
   sf::st_transform(crs = PROJ)
 
 # check
+world_shp %>% filter(iso_a3_eh=="FRA") %>% select(iso_a3, geometry)
 all_dat_bivar_map%>%filter(iso_code=="ISL")
 dat_bivar_map%>%filter(iso_code=="ISL")
-world_shp_data %>% filter(iso_a3%in%c("FRA","ISL")) %>% select(iso_a3, n_articles_country,fill)
-all_world_shp_data %>% filter(iso_a3%in%c("FRA","ISL")) %>% select(iso_a3, fill)
+world_shp_data %>% filter(iso_a3_eh%in%c("FRA","ISL")) %>% select(iso_a3, n_articles_country,fill)
+all_world_shp_data %>% filter(iso_a3_eh%in%c("FRA","ISL")) %>% select(iso_a3, fill)
 
 
 # Reproject and format world shapefile
@@ -2763,11 +2764,11 @@ data_map$data$fill[is.na(data_map$data$fill)] <- "grey90"
 all_data_map$data$fill[is.na(all_data_map$data$fill)] <- "grey90"
 
 # Determine which countries should be hatched
-incl_countries <- unique(data_map$data$iso_a3[0 < data_map$data$n_articles_country])
+incl_countries <- unique(data_map$data$iso_a3_eh[0 < data_map$data$n_articles_country])
 all_data_map$data$pattern <- ifelse(
-  !(all_data_map$data$iso_a3 %in% incl_countries) & all_data_map$data$fill != "grey90",
+  !(all_data_map$data$iso_a3_eh %in% incl_countries) & all_data_map$data$fill != "grey90",
   "pattern", "none")
-all_data_map$data$pattern[all_data_map$data$iso_a3 == "ISL"]
+all_data_map$data$pattern[all_data_map$data$iso_a3_eh == "ISL"]
     
 grat_label_size = 3
 
