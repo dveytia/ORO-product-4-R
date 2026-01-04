@@ -1096,7 +1096,18 @@ type_method_joined <- join_oro_with_label(oro_df, codedVars, study_method,
                                      )%>%
   rename(study_method = label)
 
+## The number of weighted studies with social science methods
+N_social_sci_studies <- sum(type_method_joined$weightedSum[
+  type_method_joined$study_method %in% 
+    studyMethodAes$levels[studyMethodAes$branch == "Primary - social"]
+], na.rm = TRUE)
+print(paste("N social science studies (weighted) =", 
+            scales::number(N_social_sci_studies, accuracy = 0.1)))
 
+# "N social science studies (weighted) = 52.8"
+
+
+## Plot
 method_pal <- c(studyMethodAes$col, "grey")
 
 
@@ -1953,6 +1964,710 @@ ggsave(
 ```
 
 
+
+
+```{r Bar plot version of Petal plot - of weighted means per axis ranked and excl adaptive axis}
+
+
+## Get axes from coded variables
+axisCols <- c("governance_body", "rules_of_law", "spatial_scale", "time_scale")
+
+factor_levels = list(
+    # evidence_type = c("Quantitative metric","Social empirical","Qualitative - other"),
+    governance_body = c("Community-based","Private organizations/companies",
+                        "National government",
+                        "Regional (e.g. RFMOs)","International"
+                        ),
+    rules_of_law = c("Law (binding)","Non-binding"),
+    time_scale = c("<= 1 month","1 month <= 1 year","1 year <= 5 years","5 years <= 10 years","> 10 years","None"),
+    spatial_scale = c("Local","National","Regional","Global","None")
+  )
+
+factor_level_lookup <- bind_rows(
+  lapply(names(factor_levels), function(fn) {
+    tibble(
+      factor_name  = fn,
+      factor_level = factor_levels[[fn]],
+      factor_num   = seq_along(factor_levels[[fn]])
+    )
+  })
+)
+
+
+petal_df <- join_oro_with_multilabels(
+  oro_df = oro_df,
+  codedVars = codedVars,
+  label_cols = c("governance_body", "rules_of_law", "spatial_scale", "time_scale"),
+  label_levels_list = factor_levels,
+  id_col = "id",
+  make_summary = FALSE
+) %>%
+  filter(!if_any(everything(), ~ grepl("None", .x))) %>%
+  mutate(
+    across(
+      where(is.factor),
+      ~droplevels(.x)
+    ) 
+  )%>%
+  pivot_longer(
+    cols = all_of(axisCols),   # melt only axis columns
+    names_to = "factor_name",  # column names become factor_name
+    values_to = "factor_level" # factor values become factor_level
+  )%>%
+  left_join(
+    factor_level_lookup, by = c("factor_name","factor_level")
+  ) %>%
+  mutate(
+    weighted_axis = weight*factor_num
+  ) %>%
+  group_by(
+    id, oro_type, factor_name
+  ) %>%
+  summarise(
+    weighted_axis = sum(weighted_axis, na.rm=T)
+  )%>%
+  group_by(oro_type, factor_name)%>%
+  summarise(
+    weighted_axis = mean(weighted_axis, na.rm=T)
+  )%>%
+  # Calculate ranking
+  arrange(factor_name, weighted_axis)%>%
+  group_by(factor_name)%>%
+  mutate(
+    axis_rank = row_number()
+  )%>%
+  # pivot
+  pivot_wider(
+    names_from = factor_name,
+    values_from = axis_rank
+  ) %>%
+  ungroup() 
+  
+
+
+
+# Format for ggplot
+allAxisCols <- axisCols
+allAxisColsLabs <- c("Scale of governing body","Rule of law","Spatial scale of implementation","Time since implementation")
+
+ymn <- floor(min(unlist(c(petal_df[,allAxisCols])), na.rm=T))
+ymx <- ceiling(max(unlist(c(petal_df[,allAxisCols])), na.rm=T))
+grid_lines <- pretty(c(ymn, ymx),n = 3)
+
+
+petal_df <- petal_df %>% 
+  pivot_longer(cols = c("governance_body", "rules_of_law", "spatial_scale", "time_scale"), names_to = "category", values_to = "value") %>%
+  mutate(
+    category = factor(
+      category, 
+      levels = c("governance_body", "rules_of_law", "spatial_scale", "time_scale"),
+      labels = allAxisColsLabs
+    ),
+    id = as.numeric(factor(category))
+  )
+
+# Label positions: use max value per category so labels are outside all petals
+label_df <- petal_df %>%
+  group_by(category) %>%
+  summarise(value = max(value, na.rm=T)) %>%
+  mutate(id = as.numeric(factor(category))) %>%
+  mutate(angle = 360 * (id - 0.5) / n() + 360) %>%
+  mutate(angle = ifelse(angle > 90 & angle < 270 | angle < -90, angle + 180, angle),
+           hjust = 0.5, 
+         )
+label_df <- petal_df %>%
+  group_by(category) %>%
+  summarise(value = max(value, na.rm=T)) %>%
+  mutate(
+    id = as.numeric(factor(category, levels = levels(petal_df$category))),
+    # midpoint of each bar in radial coordinates
+    angle_raw = (360 * (id - 0.5) / nlevels(petal_df$category))-135,
+    # flip text that would be upside-down
+    angle = ifelse(angle_raw > 90 & angle_raw < 270,
+                   angle_raw + 180,
+                   angle_raw),
+    hjust = ifelse(angle_raw > 90 & angle_raw < 270, 1, 0)
+  ) 
+
+label_df
+
+
+oro_context_bar_ggp <- ggplot(petal_df, aes(x = oro_type, y = value, fill = oro_type)) +
+  facet_wrap(vars(category), labeller = label_wrap_gen(width=30))+
+  geom_col(width = 1, color = "white", position = position_identity()) +
+  scale_y_continuous(
+    name = "Ranking",
+    breaks = grid_lines,
+    expand = expansion(c(0,0.1))
+  )+
+  scale_fill_manual(breaks = oroTypeAes$levels, 
+                    values = oroTypeAes$col)+
+  coord_cartesian(clip="off")+
+  labs(
+    x = "Option type"
+  )+
+  theme_minimal(base_size = 11)+
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle=45, vjust=1, hjust=1),
+    strip.text = element_text(size=10),
+   
+    panel.grid.major.y = element_line(colour = "lightgrey", linewidth = 0.5),
+    panel.grid.minor.y = element_blank(),
+
+    panel.grid.major.x = element_blank(),
+ 
+    panel.spacing = unit(1, "lines"),
+    plot.margin = unit(c(0.5, 0.5, 1,1), "cm")
+  )
+
+oro_context_bar_ggp
+
+
+ggsave(
+  here::here("figures/main/bar_plot_oro_ranking.pdf"),
+  oro_context_bar_ggp,
+  width = 6, height = 6
+)
+
+
+## ANd try writing bar plots seperately and writing as svg
+categories <- levels(petal_df$category)
+oro_context_bar_ggp_list <- lapply(
+  1:length(categories),
+  function(i){
+    cat <- categories[i]
+    tmp_dat <- petal_df %>% filter(category == cat)
+    tmp_plot <- ggplot(tmp_dat, aes(x = oro_type, y = value, fill = oro_type)) +
+      geom_col(width = 1, color = "white", position = position_identity()) +
+      scale_y_continuous(
+        name = "Ranking",
+        breaks = grid_lines,
+        expand = expansion(c(0,0.1))
+      )+
+      scale_fill_manual(breaks = oroTypeAes$levels, 
+                        values = oroTypeAes$col)+
+      guides(fill = guide_legend(nrow=4, title = ""))+
+      coord_cartesian(clip="off")+
+      labs(
+        title = paste(letters[i]),
+        subtitle = stringr::str_wrap(cat, width = 30),
+        x = ""
+      )+
+      theme_minimal(base_size = 11)+
+      theme(
+        plot.title = element_text(face="bold", size=15),
+        axis.text.x = element_text(angle=45, vjust=1, hjust=1),
+        strip.text = element_text(size=10),
+       
+        panel.grid.major.y = element_line(colour = "lightgrey", linewidth = 0.5),
+        panel.grid.minor.y = element_blank(),
+    
+        panel.grid.major.x = element_blank(),
+     
+        panel.spacing = unit(1, "lines"),
+        plot.margin = unit(c(0.5, 0.5, 1,1), "cm")
+      )
+    
+    if(i==1){
+      tmp_leg <- ggpubr::get_legend(tmp_plot)
+      ggsave(
+        filename = here::here(
+          "figures/main/bar_plot_oro_ranking_svg_plots/oro_fill_legend.svg"
+        ),
+        plot = tmp_leg,
+        width=4, height=1.5
+      )
+    }
+    
+    
+    ggsave(
+      filename = here::here(paste0(
+        "figures/main/bar_plot_oro_ranking_svg_plots/panel_",letters[i],".svg"
+      )),
+      plot = tmp_plot+theme(legend.position = "none"),
+      width=4, height=4
+    )
+  }
+  
+)
+
+```
+
+
+```{r oro and dimension grouping of proportion of articles an oro is involved in in that factor that have each level}
+
+
+## Get axes from coded variables
+axisCols <- c("governance_body", "rules_of_law", "spatial_scale", "time_scale")
+allAxisColsLabs <- c("Scale of governing body","Rule of law","Spatial scale of implementation","Time since implementation")
+
+
+factor_levels = list(
+    # evidence_type = c("Quantitative metric","Social empirical","Qualitative - other"),
+    governance_body = c("Community-based","Private organizations/companies",
+                        "National government",
+                        "Regional (e.g. RFMOs)","International"
+                        ),
+    rules_of_law = c("Non-binding","Law (binding)"),
+    time_scale = c("<= 1 month","1 month <= 1 year","1 year <= 5 years","5 years <= 10 years","> 10 years","None"),
+    spatial_scale = c("Local","National","Regional","Global","None")
+  )
+
+factor_level_lookup <- bind_rows(
+  lapply(names(factor_levels), function(fn) {
+    tibble(
+      factor_name  = fn,
+      factor_level = factor_levels[[fn]],
+      factor_num   = seq_along(factor_levels[[fn]])
+    )
+  })
+)
+
+dashboard_df <- join_oro_with_multilabels(
+  oro_df = oro_df,
+  codedVars = codedVars,
+  label_cols = c("governance_body", "rules_of_law", "spatial_scale", "time_scale"),
+  label_levels_list = factor_levels,
+  id_col = "id",
+  make_summary = FALSE
+) %>%
+  filter(!if_any(everything(), ~ grepl("None", .x))) %>%
+  mutate(
+    across(
+      where(is.factor),
+      ~droplevels(.x)
+    ) 
+  )%>%
+  pivot_longer(
+    cols = all_of(axisCols),   # melt only axis columns
+    names_to = "factor_name",  # column names become factor_name
+    values_to = "factor_level" # factor values become factor_level
+  )%>%
+  left_join(
+    factor_level_lookup, by = c("factor_name","factor_level")
+  ) %>%
+  group_by(
+    oro_type, factor_name, factor_level
+  ) %>%
+  summarise(
+    n = n_distinct(id),
+    factor_num = mean(factor_num, na.rm=T)
+  ) %>%
+  arrange(factor_name, factor_level, n)%>%
+  ungroup() 
+
+dash_oro_totals <- dashboard_df %>%
+  group_by(oro_type, factor_name) %>%
+  summarise(total = sum(n)) %>%
+  ungroup()
+
+dashboard_df <- dashboard_df %>%
+  left_join(dash_oro_totals)%>%
+  mutate(
+    prop = n/total,
+    prop_weighted = prop*factor_num
+  ) %>%
+  # Calculate ranking
+  group_by(
+    oro_type, factor_name
+  )%>%
+  summarise(
+    prop_weighted_factor_sum = sum(prop_weighted, na.rm=T)
+  ) %>%
+  arrange(factor_name, prop_weighted_factor_sum) %>%
+  group_by(factor_name)%>%
+  mutate(
+    axis_rank = row_number(),
+    category = factor(
+      factor_name,
+      levels = axisCols,
+      labels = allAxisColsLabs
+    )
+  )
+
+
+
+## bar plot facetted by dimension -------------
+oro_context_bar_ggp <- ggplot(dashboard_df, aes(x = oro_type, y = axis_rank, fill = oro_type)) +
+  facet_wrap(vars(category), labeller = label_wrap_gen(width=30))+
+  geom_col(width = 1, color = "white", position = position_identity()) +
+  scale_y_continuous(
+    name = "Ranking",
+    breaks = grid_lines,
+    expand = expansion(c(0,0.1))
+  )+
+  scale_fill_manual(breaks = oroTypeAes$levels, 
+                    values = oroTypeAes$col)+
+  coord_cartesian(clip="off")+
+  labs(
+    x = "Option type"
+  )+
+  theme_minimal(base_size = 11)+
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle=45, vjust=1, hjust=1),
+    strip.text = element_text(size=10),
+   
+    panel.grid.major.y = element_line(colour = "lightgrey", linewidth = 0.5),
+    panel.grid.minor.y = element_blank(),
+
+    panel.grid.major.x = element_blank(),
+ 
+    panel.spacing = unit(1, "lines"),
+    plot.margin = unit(c(0.5, 0.5, 1,1), "cm")
+  )
+
+oro_context_bar_ggp
+
+# Save
+ggsave(
+  here::here("figures/main/bar_plot_dimension_ranking.pdf"),
+  oro_context_bar_ggp,
+  width = 6, height = 6
+)
+
+
+
+## bar plot facetted by oro ------------
+oro_context_bar_switch_ggp <- ggplot(dashboard_df, aes(x = category, y = axis_rank, fill = category)) +
+  facet_wrap(vars(oro_type), labeller = label_wrap_gen(width=30),
+             ncol=2)+
+  geom_col(width = 1, color = "white", position = position_identity()) +
+  scale_y_continuous(
+    name = "Ranking",
+    breaks = grid_lines,
+    labels = c("low", rep("", length(grid_lines)-2), 'high'),
+    expand = expansion(c(0,0.1))
+  )+
+  scale_x_discrete(
+    limits = levels(dashboard_df$category),
+    labels = c("Governance","Law","Spatial scale","Time scale")
+  )+
+  scale_fill_brewer(palette = "Set2")+
+  coord_cartesian(clip="off")+
+  guides(
+    fill = guide_legend(nrow=2)
+  )+
+  labs(
+    x = "Dimension",
+    fill = ""
+  )+
+  theme_minimal(base_size = 11)+
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_text(angle=45, vjust=1, hjust=1),
+    axis.title.y = element_text(margin = margin(r=10)),
+    strip.text = element_text(size=10),
+   
+    panel.grid.major.y = element_line(colour = "lightgrey", linewidth = 0.5),
+    panel.grid.minor.y = element_blank(),
+
+    panel.grid.major.x = element_blank(),
+ 
+    panel.spacing = unit(1, "lines"),
+    plot.margin = unit(c(0.5, 0.5, 1,1), "cm")
+  )
+
+oro_context_bar_switch_ggp
+
+# Save
+ggsave(
+  here::here("figures/main/bar_plot_oro_ranking.pdf"),
+  oro_context_bar_switch_ggp,
+  width = 5, height = 7
+)
+
+
+
+## And quick as a petal plot -----------
+petal_ggp <- ggplot(dashboard_df, aes(x = category, y = axis_rank, fill = category)) +
+  facet_wrap(vars(oro_type), labeller = label_wrap_gen(width=20))+
+  geom_col(width = 1, color = "white", position = position_identity()) +
+  coord_radial(theta = "x", start = 0, thetalim = c(0,4), clip="off", expand = FALSE)+
+  scale_y_continuous(
+    breaks = grid_lines,
+    expand = expansion(c(0,0.1))
+  )+
+  scale_x_discrete(
+    limits = levels(dashboard_df$category),
+    labels = c("Governance","Law","Spatial","Time")
+  )+
+  geom_text(
+    data = data.frame(
+      x=rep(0, length(grid_lines)-1),
+      y=grid_lines[2:(length(grid_lines))]
+    ),
+    aes(x=x, y=y, label=y),
+    size=2,
+    inherit.aes = FALSE
+  )+
+  guides(
+    theta = guide_axis_theta(angle = 0),
+    fill = guide_legend(nrow=2)
+  )+
+  scale_fill_brewer(palette = "Set2")+
+  labs(
+    fill = "Dimension"
+  )+
+  theme_minimal()+
+  theme(
+    legend.position = "bottom",
+    axis.text.y = element_blank(),
+    # axis.text.x = element_text(margin = margin(t=-5), vjust=0, hjust=1),
+    strip.text = element_text(size=10, margin = margin(b=8)),
+    axis.title = element_blank(),
+    panel.grid.major.y = element_line(colour = "lightgrey", linewidth = 0.5),
+    panel.grid.minor.y = element_blank(),
+
+    panel.grid.major.x = element_blank(),
+ 
+    panel.spacing = unit(1, "lines")
+  )
+
+petal_ggp
+
+
+ggsave(
+  here::here("figures/main/petal_plot_oro_ranking.pdf"),
+  petal_ggp,
+  width = 6, height = 7.5
+)
+
+
+
+## Write dashboard plots for each dimension category seperately and save as svg -----------
+categories <- levels(dashboard_df$category)
+plot_icons <- c(
+  "C:\\Users\\deviv\\R-working-folder\\ORO-product-4-R\\figures\\infographic inkscape\\icons\\fisheries management icon.svg",
+)
+
+
+oro_context_dashboard_ggp_list <- lapply(
+  1:length(categories),
+  function(i){
+    cat <- categories[i]
+    icon_use <- magick::image_read_svg(plot_icons[i])
+    
+    tmp_dat <- dashboard_df %>% filter(category == cat)
+    tmp_plot <- ggplot(tmp_dat, aes(x = oro_type, y = axis_rank, fill = oro_type)) +
+      geom_col(width = 1, color = "white", position = position_identity()) +
+      scale_y_continuous(
+        name = "",
+        breaks = c(0,8),
+        labels = c("low", "high"),
+        expand = expansion(c(0,0.1))
+      )+
+      # x axis order in terms of rank not type of ORO
+      scale_x_discrete(labels = label_wrap_gen(width=15),
+                       limits = tmp_dat$oro_type[order(tmp_dat$axis_rank,decreasing = TRUE)]
+                       )+
+      scale_fill_manual(breaks = oroTypeAes$levels, 
+                        values = oroTypeAes$col)+
+      guides(fill = guide_legend(nrow=4, title = ""),
+             theta = guide_axis_theta(angle = 90),
+             r     = guide_axis(angle = 0))+
+      coord_radial(end = -0.5 * pi, start = 0.5 * pi,
+                   inner.radius = 0.7, r.axis.inside = TRUE)+
+      labs(
+        title = paste(letters[i]),
+        subtitle = stringr::str_wrap(cat, width = 30),
+        x = ""
+      )+
+      theme_minimal(base_size = 11)+
+      theme(
+        plot.title = element_text(face="bold", size=15, margin = margin(b=1.5, unit="cm")),
+        plot.subtitle = element_text(size=12, margin = margin(b=3, unit="cm")),
+        axis.text.x = element_text(angle=45, vjust=1, hjust=1),
+        strip.text = element_text(size=10),
+        axis.line.theta = element_line(colour = "black", linewidth = 0.8),
+        panel.grid.major.y = element_blank(),# element_line(colour = "lightgrey", linewidth = 0.5),
+        panel.grid.minor.y = element_blank(),
+    
+        panel.grid.major.x = element_blank(),
+     
+        panel.spacing = unit(1, "lines"),
+        plot.margin = unit(c(0.5, 0.5, 1,1), "cm")
+      )
+    tmp_plot 
+      
+    
+    cowplot::ggdraw(tmp_plot+theme(legend.position = "none"))+ 
+      cowplot::draw_image(icon_use, x = 0.5, y=0.35, halign = -0.5, valign = 0,width = 0.55, height = 0.4, scale=1)
+    
+    if(i==1){
+      tmp_leg <- ggpubr::get_legend(tmp_plot)
+      ggsave(
+        filename = here::here(
+          "figures/main/dashboard_plot_oro_ranking_svg_plots/oro_fill_legend.svg"
+        ),
+        plot = tmp_leg,
+        width=4, height=1.5
+      )
+    }
+    
+    
+    ggsave(
+      filename = here::here(paste0(
+        "figures/main/dashboard_plot_oro_ranking_svg_plots/panel_",letters[i],".svg"
+      )),
+      plot = tmp_plot+theme(legend.position = "none"),
+      width=4, height=4
+    )
+  }
+  
+)
+
+```
+
+
+```{r per-level heatmap of proportion of articles an oro is involved in in that factor that have that particular level}
+
+
+## Get axes from coded variables
+axisCols <- c("governance_body", "rules_of_law", "spatial_scale", "time_scale")
+allAxisColsLabs <- c("Scale of governing body","Rule of law","Spatial scale of implementation","Time since implementation")
+
+
+factor_levels = list(
+    # evidence_type = c("Quantitative metric","Social empirical","Qualitative - other"),
+    governance_body = c("Community-based","Private organizations/companies",
+                        "National government",
+                        "Regional (e.g. RFMOs)","International"
+                        ),
+    rules_of_law = c("Non-binding","Law (binding)"),
+    time_scale = c("<= 1 month","1 month <= 1 year","1 year <= 5 years","5 years <= 10 years","> 10 years","None"),
+    spatial_scale = c("Local","National","Regional","Global","None")
+  )
+
+factor_level_lookup <- bind_rows(
+  lapply(names(factor_levels), function(fn) {
+    tibble(
+      factor_name  = fn,
+      factor_level = factor_levels[[fn]],
+      factor_num   = seq_along(factor_levels[[fn]])
+    )
+  })
+) 
+
+factor_level_order <- factor_level_lookup %>%
+  rowwise() %>%
+  mutate(
+    factor_name_f = factor(factor_name, levels = axisCols, labels = allAxisColsLabs),
+  )%>%
+  ungroup() %>%
+  arrange(factor_name_f, factor_num) %>%
+  mutate(
+    plot_order = row_number()
+  )
+
+
+
+# Instead of taking mean weighted averages, 
+# calculate rankings from the proportion of articles an oro is involved in in that factor, that have that particular level.
+
+oro_rank_df <- join_oro_with_multilabels(
+  oro_df = oro_df,
+  codedVars = codedVars,
+  label_cols = c("governance_body", "rules_of_law", "spatial_scale", "time_scale"),
+  label_levels_list = factor_levels,
+  id_col = "id",
+  make_summary = FALSE
+) %>%
+  filter(!if_any(everything(), ~ grepl("None", .x))) %>%
+  mutate(
+    across(
+      where(is.factor),
+      ~droplevels(.x)
+    ) 
+  )%>%
+  pivot_longer(
+    cols = all_of(axisCols),   # melt only axis columns
+    names_to = "factor_name",  # column names become factor_name
+    values_to = "factor_level" # factor values become factor_level
+  )%>%
+  left_join(
+    factor_level_lookup, by = c("factor_name","factor_level")
+  ) %>%
+  mutate(
+    weighted_axis = weight #*factor_num
+  ) %>%
+  group_by(
+    oro_type, factor_name, factor_level
+  ) %>%
+  summarise(
+    n = n_distinct(id)
+  ) %>%
+  ungroup()
+
+oro_totals <- oro_rank_df %>%
+  group_by(oro_type, factor_name) %>%
+  summarise(total = sum(n)) %>%
+  ungroup()
+
+oro_rank_df <- oro_rank_df %>%
+  left_join(oro_totals)%>%
+  mutate(
+    prop = n/total
+  ) %>%
+  # Calculate ranking
+  arrange(factor_name, factor_level, prop) %>%
+  group_by(factor_name, factor_level)%>%
+  mutate(
+    axis_rank = row_number()
+  )%>%
+  left_join(
+    factor_level_order %>%
+      select(factor_name_f, factor_name, factor_level, plot_order)
+  )  
+
+
+level_rank_mat_ggp <- ggplot(oro_rank_df,
+                             aes(y=factor(plot_order), x=oro_type, fill=axis_rank))+
+  facet_grid(rows = vars(factor_name_f), drop = TRUE, scales="free_y",
+             labeller = label_wrap_gen(width = 10), switch = "y",
+             space= "free_y"
+             )+
+  scale_y_discrete(
+    breaks = factor_level_order$plot_order[order(factor_level_order$plot_order)],
+    labels = factor_level_order$factor_level[order(factor_level_order$plot_order)],
+    expand = expansion(mult = c(0.1)),
+    drop=TRUE
+  )+
+  scale_x_discrete(limits = rev(levels(oro_rank_df$oro_type)), drop=TRUE)+
+  geom_tile(height = 0.8)+
+  scale_fill_stepsn(
+    breaks = function(in_limits){seq(in_limits[1], in_limits[2], by=1)},
+    colors = viridis(8),
+    labels = c("low", rep("", 6), "high")
+  )+
+  labs(
+    x = "Option type",
+    y="",
+    fill = "Rank"
+  )+
+  theme_minimal(base_size = 12)+
+  theme(
+    strip.placement = "outside",  
+    axis.text.x = element_text(
+      angle=45, hjust=1, vjust=1
+    ),
+    panel.spacing.y = unit(0.5, "cm"),
+    legend.key.width = unit(0.9, "cm"),
+    panel.border = element_rect(fill=NA, color="black",linewidth = 0.5),
+    panel.grid = element_blank(),
+    # axis.title.x = element_blank(),
+    legend.position = "bottom"
+  )
+
+
+
+ggsave(
+  here::here("figures/main/oro_ranking_matrix.pdf"),
+  level_rank_mat_ggp,
+  width = 5.5, height = 7.5
+)
+```
 
 
 
