@@ -2252,6 +2252,7 @@ dashboard_df <- join_oro_with_multilabels(
   ) %>%
   summarise(
     n = n_distinct(id),
+    n_weighted = sum(weight, na.rm=T),
     factor_num = mean(factor_num, na.rm=T)
   ) %>%
   arrange(factor_name, factor_level, n)%>%
@@ -2273,7 +2274,9 @@ dashboard_df <- dashboard_df %>%
     oro_type, factor_name
   )%>%
   summarise(
-    prop_weighted_factor_sum = sum(prop_weighted, na.rm=T)
+    prop_weighted_factor_sum = sum(prop_weighted, na.rm=T),
+    n = sum(n, na.rm = T),
+    n_weighted = sum(n_weighted, na.rm=T)
   ) %>%
   arrange(factor_name, prop_weighted_factor_sum) %>%
   group_by(factor_name)%>%
@@ -2334,6 +2337,7 @@ oro_context_bar_switch_ggp <- ggplot(dashboard_df, aes(x = category, y = axis_ra
   facet_wrap(vars(oro_type), labeller = label_wrap_gen(width=30),
              ncol=2)+
   geom_col(width = 1, color = "white", position = position_identity()) +
+  geom_text(aes(label = scales::number(n_weighted, accuracy = 0.1)), vjust=0, size=3)+
   scale_y_continuous(
     name = "Ranking",
     breaks = grid_lines,
@@ -2350,10 +2354,10 @@ oro_context_bar_switch_ggp <- ggplot(dashboard_df, aes(x = category, y = axis_ra
     fill = guide_legend(nrow=2)
   )+
   labs(
-    x = "Dimension",
+    x = "Criterion",
     fill = ""
   )+
-  theme_minimal(base_size = 11)+
+  theme_minimal(base_size = 12)+
   theme(
     legend.position = "bottom",
     axis.text.x = element_text(angle=45, vjust=1, hjust=1),
@@ -2366,7 +2370,8 @@ oro_context_bar_switch_ggp <- ggplot(dashboard_df, aes(x = category, y = axis_ra
     panel.grid.major.x = element_blank(),
  
     panel.spacing = unit(1, "lines"),
-    plot.margin = unit(c(0.5, 0.5, 1,1), "cm")
+    plot.margin = unit(c(0.5, 0.5, 1,1), "cm"),
+    legend.text = element_text(size = 12)
   )
 
 oro_context_bar_switch_ggp
@@ -2439,13 +2444,13 @@ ggsave(
 ## Write dashboard plots for each dimension category seperately and save as svg -----------
 categories <- levels(dashboard_df$category)
 plot_icons <- c(
-  "C:\\Users\\deviv\\R-working-folder\\ORO-product-4-R\\figures\\infographic inkscape\\icons\\fisheries management icon.svg",
+  "governance_icon.svg","law_icon.svg","spatial_icon.svg","time_icon.svg"
 )
+plot_icons <- here::here("figures/ranking icons inkscape", plot_icons)
 
+oro_context_dashboard_ggp_list <- list()
 
-oro_context_dashboard_ggp_list <- lapply(
-  1:length(categories),
-  function(i){
+for(i in 1:length(categories)){
     cat <- categories[i]
     icon_use <- magick::image_read_svg(plot_icons[i])
     
@@ -2458,9 +2463,9 @@ oro_context_dashboard_ggp_list <- lapply(
         labels = c("low", "high"),
         expand = expansion(c(0,0.1))
       )+
-      # x axis order in terms of rank not type of ORO
-      scale_x_discrete(labels = label_wrap_gen(width=15),
-                       limits = tmp_dat$oro_type[order(tmp_dat$axis_rank,decreasing = TRUE)]
+      # x axis order in terms of rank not type of ORO?
+      scale_x_discrete(labels = label_wrap_gen(width=15)
+                       # limits = tmp_dat$oro_type[order(tmp_dat$axis_rank,decreasing = TRUE)]
                        )+
       scale_fill_manual(breaks = oroTypeAes$levels, 
                         values = oroTypeAes$col)+
@@ -2476,8 +2481,8 @@ oro_context_dashboard_ggp_list <- lapply(
       )+
       theme_minimal(base_size = 11)+
       theme(
-        plot.title = element_text(face="bold", size=15, margin = margin(b=1.5, unit="cm")),
-        plot.subtitle = element_text(size=12, margin = margin(b=3, unit="cm")),
+        plot.title = element_text(face="bold", size=15, margin = margin(b=15, unit="pt")),
+        plot.subtitle = element_text(size=12, margin = margin(b=40, unit="pt")),
         axis.text.x = element_text(angle=45, vjust=1, hjust=1),
         strip.text = element_text(size=10),
         axis.line.theta = element_line(colour = "black", linewidth = 0.8),
@@ -2487,13 +2492,23 @@ oro_context_dashboard_ggp_list <- lapply(
         panel.grid.major.x = element_blank(),
      
         panel.spacing = unit(1, "lines"),
-        plot.margin = unit(c(0.5, 0.5, 1,1), "cm")
+        plot.margin = unit(c(0.5, 1, 1,1), "cm"),
+        legend.text = element_text(size = 12)
       )
-    tmp_plot 
+    # tmp_plot 
       
     
-    cowplot::ggdraw(tmp_plot+theme(legend.position = "none"))+ 
-      cowplot::draw_image(icon_use, x = 0.5, y=0.35, halign = -0.5, valign = 0,width = 0.55, height = 0.4, scale=1)
+    tmp_plot_icon <- cowplot::ggdraw(tmp_plot+theme(legend.position = "none"))+ 
+      cowplot::draw_image(icon_use, x = 0.52, y=0.45, hjust = 0.5, vjust = 0,width = 0.28, height = 0.28, scale=1, halign = 0.5, valign = 0.5)
+    # tmp_plot_icon
+    
+    ggsave(
+      filename = here::here(paste0(
+        "figures/main/dashboard_plot_oro_ranking_svg_plots/panel_",letters[i],".svg"
+      )),
+      plot = tmp_plot_icon, #tmp_plot+theme(legend.position = "none"),
+      width=4, height=4
+    )
     
     if(i==1){
       tmp_leg <- ggpubr::get_legend(tmp_plot)
@@ -2506,16 +2521,36 @@ oro_context_dashboard_ggp_list <- lapply(
       )
     }
     
+    oro_context_dashboard_ggp_list[[i]] <- tmp_plot_icon
     
-    ggsave(
-      filename = here::here(paste0(
-        "figures/main/dashboard_plot_oro_ranking_svg_plots/panel_",letters[i],".svg"
-      )),
-      plot = tmp_plot+theme(legend.position = "none"),
-      width=4, height=4
-    )
-  }
+}
   
+
+
+## plot all panels together
+require(patchwork)
+plot_layouts <- "
+AB#
+ABF
+CDF
+EEF"
+
+all_plots_list <- c(oro_context_dashboard_ggp_list,
+                    list(tmp_leg), 
+                    list(oro_context_bar_switch_ggp+ggtitle("e.")+
+                           theme(
+                             plot.title = element_text(face="bold")
+                             # plot.margin = unit(c(80,5,5,10),"pt")
+                           )
+                         ))
+
+patch_plots <- wrap_plots(all_plots_list, design = plot_layouts, 
+                          widths = c(1,1,1.3), heights = c(0.1,0.9,1,0.05))
+
+ggsave(
+  here::here("figures/main/dashboard_and_barplots_rankings.pdf"),
+  plot=patch_plots,
+  width=13, height=10
 )
 
 ```
@@ -4410,6 +4445,141 @@ ggsave(
 
 ```
 
+
+```{r heatmaps of trade offs}
+# calculate outcomes
+oroOutcomes <- expand_labels_with_weight(df = studyResults, id_col = article_outcome_id, list_col = oro_type) %>%
+  left_join(studyResults %>% select(id, article_outcome_id,result_type, result_effect)) %>%
+  left_join(codedVars %>% select(id, evidence_type), by = "id") %>%
+  rename(
+    oro_type = label
+  ) %>%
+  mutate(
+    oro_type = factor(
+      oro_type,
+      levels = oroTypeAes$levels
+    ),
+    evidence_type = factor(
+      evidence_type,
+      levels=c("Quantitative metric","Social empirical","Qualitative - other")
+    )
+  )
+
+tradeOffs <- expand_labels_with_weight(df = oroOutcomes, id_col = article_outcome_id, list_col = result_type) %>%
+  left_join(oroOutcomes %>% select(article_outcome_id, id, oro_type, evidence_type, result_effect, weight) %>% rename(oro_weight = weight),
+            relationship = "many-to-many") %>%
+  rename(
+    result_type = label,
+    result_type_weight = weight
+  ) %>%
+  mutate(
+    weight = oro_weight*result_type_weight,
+    result_type = factor(
+      result_type,
+      levels = c("Social","Economic","Management","Ecological")
+    )
+  ) 
+  # group_by(
+  #   result_type, oro_type, result_effect
+  # ) %>%
+  # summarise(
+  #   weightedSum = sum(weight, na.rm = T)
+  # )
+
+resultTypes <- levels(tradeOffs$result_type)
+oros <- levels(tradeOffs$oro_type)
+resultTradeOffs_df <- data.frame()
+for(r in 1:length(resultTypes)){
+  # for(o in 1:length(oros)){
+    posIds <- tradeOffs %>%
+      filter(result_type == resultTypes[r], #oro_type == oros[o], 
+             result_effect=="Positive")
+    posIds <- unique(posIds$id)
+    
+    dfTemp <- tradeOffs %>%
+      filter(id %in% posIds, 
+             result_type != resultTypes[r],# oro_type == oros[o], 
+             result_effect!="Neutral")
+    if(nrow(dfTemp) < 1){
+      next
+    }
+    dfTemp<- dfTemp%>%
+      mutate(
+        result_effect = factor(result_effect, levels = c("Positive","Negative"))
+      ) %>%
+      group_by(result_type, result_effect) %>%
+      summarise(
+        weightedSum = sum(weight, na.rm = T)
+      )%>%
+      complete(result_effect, fill = list(weightedSum = NA)) %>%
+      pivot_wider(
+        names_from = result_effect,
+        values_from = weightedSum
+      ) %>%
+      mutate(
+        Negative = Negative*-1
+      )%>%
+      replace_na(list(Positive = 0, Negative = 0))%>%
+      mutate(
+        # oro_type = oros[o],
+        positive_result = resultTypes[r]
+      )
+    
+    resultTradeOffs_df <- resultTradeOffs_df %>%
+      bind_rows(dfTemp)
+    
+  # }
+}
+
+
+resultTradeOffs_heat_df <- resultTradeOffs_df %>%
+  pivot_longer(cols = c("Positive","Negative"), names_to = "outcome_type", values_to = "n_articles") %>%
+  mutate(outcome_type = factor(outcome_type, levels = c("Positive","Negative"), labels = c("Adaptive\noutcomes", "Maladaptive\noutcomes"))) %>%
+  filter(abs(n_articles)>0)
+
+tradeoff_heatmap_ggp <- ggplot(resultTradeOffs_heat_df, aes(x=positive_result, y = result_type))+
+  facet_wrap( ~ outcome_type, scales = "free_y", )+
+  geom_tile(aes(fill = n_articles))+
+  geom_text(aes(label = n_articles))+
+  scale_fill_gradient2(low = "#d01c8b", mid = "white", high = "#4dac26") +
+      labs(
+        x = "Adaptive outcome",
+        y = "Other dimension",
+        fill = "N articles\n(weighted)"
+      )+
+      theme_minimal(base_size = 10)+
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1, vjust=1)
+  )
+
+tradeoff_heatmap_ggp <- ggplot(resultTradeOffs_heat_df, aes(x=result_type, y = outcome_type))+
+  facet_wrap( ~ positive_result, scales = "free_y", )+
+  geom_tile(aes(fill = n_articles))+
+  geom_text(aes(label = n_articles))+
+  scale_fill_gradient2(low = "#d01c8b", mid = "white", high = "#4dac26") +
+  scale_y_discrete(limits = rev(levels(resultTradeOffs_heat_df$outcome_type)))+
+      labs(
+        x = "Other dimension",
+        y = "Outcome type",
+        fill = "N articles\n(weighted)"
+      )+
+      theme_minimal(base_size = 10)+
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1, vjust=1),
+    legend.position = "bottom"
+  )
+
+tradeoff_heatmap_ggp
+
+ggsave(
+  filename = here::here("figures/main/coben_disben_heatmaps.pdf"),
+  tradeoff_heatmap_ggp,
+  width = 5.5, height=4.5
+)
+
+
+
+```
 
 
 ```{r trade offs by ORO}
