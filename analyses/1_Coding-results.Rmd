@@ -4941,7 +4941,7 @@ tradeOffs <- expand_labels_with_weight(df = oroOutcomes, id_col = article_outcom
     weight = oro_weight*result_type_weight,
     result_type = factor(
       result_type,
-      levels = c("Social","Economic","Management","Ecological")
+      levels = c("Management","Economic","Social","Ecological")
     )
   ) 
   # group_by(
@@ -4995,10 +4995,17 @@ for(r in 1:length(resultTypes)){
     
   # }
 }
+resultTradeOffs_df$positive_result <- factor(
+  as.character(resultTradeOffs_df$positive_result),
+  levels = levels(resultTradeOffs_df$result_type)
+)
 
 tradeoff_ggp <- ggplot(resultTradeOffs_df, aes(x=result_type))+
-  facet_wrap( ~ positive_result, scales = "free_y")+
+  facet_wrap( ~ positive_result, nrow = 1)+
   scale_y_continuous(expand = expansion(mult=c(0.15,0.15)))+
+  scale_x_discrete(
+    limits = rev(levels(resultTradeOffs_df$result_type))
+  )+
   geom_rect(aes(x=result_type, width=0.7, ymin = Negative, ymax = 0), fill="#d01c8b")+
   geom_rect(aes(x=result_type, width=0.7, ymin = 0, ymax = Positive), fill="#4dac26")+
   geom_text(data = resultTradeOffs_df %>% filter(0 < Positive),
@@ -5011,7 +5018,7 @@ tradeoff_ggp <- ggplot(resultTradeOffs_df, aes(x=result_type))+
         y = "Adaptive outcomes v. trade-off (weighted sum)"
       )+
       coord_flip(clip = "off")+
-      theme_minimal(base_size = 10)
+      theme_minimal(base_size = 12)
   # theme(
   #   plot.margin = unit(c(rep(0.2,4)), "cm")
   # )
@@ -5020,7 +5027,7 @@ tradeoff_ggp
 ggsave(
   filename = here::here("figures/main/coben_disben_barplots.pdf"),
   tradeoff_ggp,
-  width = 6, height=5
+  width = 7, height=4
 )
 
 
@@ -5028,140 +5035,6 @@ ggsave(
 ```
 
 
-```{r heatmaps of trade offs}
-# calculate outcomes
-oroOutcomes <- expand_labels_with_weight(df = studyResults, id_col = article_outcome_id, list_col = oro_type) %>%
-  left_join(studyResults %>% select(id, article_outcome_id,result_type, result_effect)) %>%
-  left_join(codedVars %>% select(id, evidence_type), by = "id") %>%
-  rename(
-    oro_type = label
-  ) %>%
-  mutate(
-    oro_type = factor(
-      oro_type,
-      levels = oroTypeAes$levels
-    ),
-    evidence_type = factor(
-      evidence_type,
-      levels=c("Quantitative metric","Social empirical","Qualitative - other")
-    )
-  )
-
-tradeOffs <- expand_labels_with_weight(df = oroOutcomes, id_col = article_outcome_id, list_col = result_type) %>%
-  left_join(oroOutcomes %>% select(article_outcome_id, id, oro_type, evidence_type, result_effect, weight) %>% rename(oro_weight = weight),
-            relationship = "many-to-many") %>%
-  rename(
-    result_type = label,
-    result_type_weight = weight
-  ) %>%
-  mutate(
-    weight = oro_weight*result_type_weight,
-    result_type = factor(
-      result_type,
-      levels = c("Social","Economic","Management","Ecological")
-    )
-  ) 
-  # group_by(
-  #   result_type, oro_type, result_effect
-  # ) %>%
-  # summarise(
-  #   weightedSum = sum(weight, na.rm = T)
-  # )
-
-resultTypes <- levels(tradeOffs$result_type)
-oros <- levels(tradeOffs$oro_type)
-resultTradeOffs_df <- data.frame()
-for(r in 1:length(resultTypes)){
-  # for(o in 1:length(oros)){
-    posIds <- tradeOffs %>%
-      filter(result_type == resultTypes[r], #oro_type == oros[o], 
-             result_effect=="Positive")
-    posIds <- unique(posIds$id)
-    
-    dfTemp <- tradeOffs %>%
-      filter(id %in% posIds, 
-             result_type != resultTypes[r],# oro_type == oros[o], 
-             result_effect!="Neutral")
-    if(nrow(dfTemp) < 1){
-      next
-    }
-    dfTemp<- dfTemp%>%
-      mutate(
-        result_effect = factor(result_effect, levels = c("Positive","Negative"))
-      ) %>%
-      group_by(result_type, result_effect) %>%
-      summarise(
-        weightedSum = sum(weight, na.rm = T)
-      )%>%
-      complete(result_effect, fill = list(weightedSum = NA)) %>%
-      pivot_wider(
-        names_from = result_effect,
-        values_from = weightedSum
-      ) %>%
-      mutate(
-        Negative = Negative*-1
-      )%>%
-      replace_na(list(Positive = 0, Negative = 0))%>%
-      mutate(
-        # oro_type = oros[o],
-        positive_result = resultTypes[r]
-      )
-    
-    resultTradeOffs_df <- resultTradeOffs_df %>%
-      bind_rows(dfTemp)
-    
-  # }
-}
-
-
-resultTradeOffs_heat_df <- resultTradeOffs_df %>%
-  pivot_longer(cols = c("Positive","Negative"), names_to = "outcome_type", values_to = "n_articles") %>%
-  mutate(outcome_type = factor(outcome_type, levels = c("Positive","Negative"), labels = c("Adaptive\noutcomes", "Maladaptive\noutcomes"))) %>%
-  filter(abs(n_articles)>0)
-
-tradeoff_heatmap_ggp <- ggplot(resultTradeOffs_heat_df, aes(x=positive_result, y = result_type))+
-  facet_wrap( ~ outcome_type, scales = "free_y", )+
-  geom_tile(aes(fill = n_articles))+
-  geom_text(aes(label = n_articles))+
-  scale_fill_gradient2(low = "#d01c8b", mid = "white", high = "#4dac26") +
-      labs(
-        x = "Adaptive outcome",
-        y = "Other dimension",
-        fill = "N articles\n(weighted)"
-      )+
-      theme_minimal(base_size = 10)+
-  theme(
-    axis.text.x = element_text(angle=45, hjust=1, vjust=1)
-  )
-
-tradeoff_heatmap_ggp <- ggplot(resultTradeOffs_heat_df, aes(x=result_type, y = outcome_type))+
-  facet_wrap( ~ positive_result, scales = "free_y", )+
-  geom_tile(aes(fill = n_articles))+
-  geom_text(aes(label = n_articles))+
-  scale_fill_gradient2(low = "#d01c8b", mid = "white", high = "#4dac26") +
-  scale_y_discrete(limits = rev(levels(resultTradeOffs_heat_df$outcome_type)))+
-      labs(
-        x = "Other dimension",
-        y = "Outcome type",
-        fill = "N articles\n(weighted)"
-      )+
-      theme_minimal(base_size = 10)+
-  theme(
-    axis.text.x = element_text(angle=45, hjust=1, vjust=1),
-    legend.position = "bottom"
-  )
-
-tradeoff_heatmap_ggp
-
-ggsave(
-  filename = here::here("figures/main/coben_disben_heatmaps.pdf"),
-  tradeoff_heatmap_ggp,
-  width = 5.5, height=4.5
-)
-
-
-
-```
 
 
 ```{r trade offs by ORO}
