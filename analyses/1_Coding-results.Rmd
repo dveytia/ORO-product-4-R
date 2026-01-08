@@ -113,6 +113,7 @@ cidAes <- data.frame(
              "Climate change"
             ),
   order = 1:6,
+  order_extreme_long = c(1,4,3,2,5,6),
   col = c(
   # Coastal hazards (teal/cyan shades)
   "#17becf",  # Storms/extreme weather
@@ -631,7 +632,7 @@ oroTypeDf_wide[is.na(oroTypeDf_wide)] <- 0
 intCols <- rev(oroTypeAes$levels)
 
 
-## Compute pairwise overlaps
+## Compute pairwise overlaps ----------------------
 pairwise_interactions <- expand.grid(intCols,intCols)
 pairwise_interactions <- matrix(nrow=length(intCols), ncol=length(intCols),
                                 dimnames = list(intCols, intCols))
@@ -650,6 +651,7 @@ for(i in 1:nrow(pairwise_interactions)){
 }
 # pairwise_interactions[upper.tri(pairwise_interactions)] <- NA
 
+
 pairwise_interactions <- as.data.frame(pairwise_interactions)%>%
   tibble::rownames_to_column(var="ORO 1")%>%
   pivot_longer(cols = any_of(intCols), names_to = "ORO 2", values_to = "value")%>%
@@ -662,6 +664,8 @@ pairwise_interactions <- as.data.frame(pairwise_interactions)%>%
     )
   )
 
+
+## Pairwise interactions heatmap -----------------------
 pairwise_interactions_ggp <- ggplot(pairwise_interactions,
                                     aes(x=`ORO 1`, y=`ORO 2`, fill=value))+
   geom_tile(aes(fill=value))+
@@ -690,6 +694,96 @@ ggsave(
 )
 
 
+## Pairwise interactions as a network ---------------------
+require(igraph)
+require(ggraph)
+require(tidygraph)
+
+pairwise_network_df <- pairwise_interactions%>%
+  filter(!is.na(value), value > 0) %>%
+  distinct(`ORO 1`, `ORO 2`, .keep_all = TRUE)
+
+
+# Build igraph object
+g <- graph_from_data_frame(pairwise_network_df, directed = FALSE)
+
+# Set edge weights and labels
+E(g)$weight <- scales::rescale(
+    pairwise_network_df$value,
+    to=c(0.25,1)
+    )
+E(g)$n <- pairwise_network_df$value
+
+# Convert to g_tidy for plotting
+g_tidy <- as_tbl_graph(g) 
+
+# Plotting settings
+end_cap_mm = 0
+nodeTextSize <- 2
+labelSize <- 4
+
+
+## plot
+oro_network_ggp <- ggraph(g_tidy, layout = "circle") +  # You can try "kk" or "circle" or "fr" for spacing
+  # Plot edges
+  geom_edge_diagonal(
+    aes(
+      edge_width = weight
+      # label = paste0(scales::number(n, accuracy = 1))
+    ),
+    arrow = arrow(length = unit(0, 'mm')),
+    end_cap = circle(end_cap_mm, 'mm'),
+    # label_dodge = unit(2, 'mm'),
+    # label_push = unit(3, 'mm'),
+    angle_calc = 'along',
+    # label_size=labelSize,
+    color = "grey20",
+    alpha = 0.3,
+    show.legend = FALSE
+  ) +
+  
+  # Plot nodes
+  geom_node_point(size = 6, aes(color = name)) +
+  geom_node_label(aes(label = stringr::str_wrap(name, width=15),
+                      fill = name),
+                 label.size = nodeTextSize, alpha=1,
+                 color = "black"
+                 ) +
+  
+  # Scales
+  scale_color_manual(values = oroTypeAes$col,
+                     breaks = oroTypeAes$labels, 
+                     guide="none")+
+  scale_fill_manual(values = oroTypeAes$col,
+                     breaks = oroTypeAes$labels, 
+                     guide="none")+
+  # scale_edge_width_identity()+
+  scale_x_continuous(expand = expansion(mult=0.1))+
+  scale_y_continuous(expand = expansion(mult=0.1))+
+  scale_size_identity()+
+  coord_cartesian(clip="off")+
+  # Themes
+  theme_void() +
+  theme(
+    plot.margin = unit(rep(5,4), units = "mm"),
+    legend.position = "none"
+    )
+
+oro_network_ggp
+
+
+## Save plot along with heatmap
+oro_int_plots <- wrap_plots(list(pairwise_interactions_ggp,
+                                 free(oro_network_ggp)),
+                            ncol=1, heights = c(1,1.75))+
+  plot_annotation(tag_levels = "a")
+
+ggsave(plot = oro_int_plots,
+       filename = here::here("figures/supplemental/pairwise_oro_interactions_heatmap_network.pdf"),
+       width=5, height=8
+       )
+
+## Plot upset all orders--------------------
 
 # oroTypeDf_wide[intCols] = oroTypeDf_wide[intCols] == 1 # convert to bool
 us_ggp <- UpSetR::upset(oroTypeDf_wide,
@@ -703,6 +797,183 @@ print(us_ggp)
 pdf(here::here("figures/supplemental/oroInteractionsUpsetPlot.pdf"), width = 8, height=5, onefile=FALSE)
 print(us_ggp)
 dev.off()
+
+
+## Upset just two orders ---------------
+require(ComplexUpset)
+oroTypeDf_wide2 <- as.data.frame(oroTypeDf_wide)
+oroTypeDf_wide2$id <- NULL
+oroTypeDf_wide2 = oroTypeDf_wide2 ==1
+
+# Remove columns where less than 2-way interaction
+oroTypeDf_wide2 <- oroTypeDf_wide2[-which(rowSums(oroTypeDf_wide2) < 2),]
+
+set_cols <- colnames(oroTypeDf_wide2)
+
+sum(is.na(oroTypeDf_wide2)) #0
+sum(!is.logical(oroTypeDf_wide2))#0
+
+oroTypeDf_wide2 <- as.data.frame(oroTypeDf_wide2)
+
+upset2_ggp <- ComplexUpset::upset(
+  oroTypeDf_wide2, 
+  width_ratio = 0.4,
+  height_ratio = 1.5,
+  intersect=set_cols,
+  sort_sets=FALSE,
+  min_degree=2, max_degree =2,
+  base_annotations = list(
+    'Intersection size' = intersection_size(
+      text = list(size=3, angle = 90, hjust = 0, vjust=0.5)
+      )+
+      theme(
+        panel.grid = element_blank(),
+        axis.text = element_blank(),
+        axis.title.y = element_blank()
+        )
+    ),
+  set_sizes=(
+    upset_set_size(
+      geom = geom_bar(aes(fill=group)))+
+                 geom_text(aes(label=..count..), hjust=1.1, stat='count', size=2.5, col="white")+
+  scale_fill_manual(values = oroTypeAes$col, guide=FALSE)+
+                 theme(
+                   axis.text.x = element_text(angle=90), 
+                   legend.position = 'none',
+                   panel.grid = element_blank(),
+                   axis.title.x = element_text(angle = 180, hjust=0,size=10)
+                   )
+    )+ 
+    geom_text(aes(label=..count..), stat='count', angle=180, hjust=0, size=3)+
+    expand_limits(y=70)
+  ,
+  stripes = "transparent"
+  )+
+  theme(
+    panel.grid = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.y = element_text(angle = 180, hjust=0, size=10)
+  )
+
+upset2_ggp
+
+
+
+
+## Save as svg for inkscape
+ggsave(
+  here::here("figures/infographic inkscape/2_way_upset.svg"),
+  plot=upset2_ggp,
+  width = 7, height=3.5
+)
+
+
+
+
+
+## Or adjust ratios
+upset2_ggp <- ComplexUpset::upset(
+  oroTypeDf_wide2, 
+  intersect=rev(set_cols),
+  sort_sets=FALSE,
+  min_degree=2, max_degree =2,
+  base_annotations = list(
+    'Intersection size' = intersection_size(
+      text = list(size=3)
+      )+
+      theme(
+        panel.grid = element_blank(),
+        axis.text = element_blank(),
+        axis.title.y = element_blank(),
+        plot.background = element_blank(),
+    panel.background = element_blank()
+        )
+    ),
+  # set_sizes=(
+  #   upset_set_size(
+  #     geom = geom_bar(aes(fill=group)))+
+  #                geom_text(aes(label=..count..), hjust=1, stat='count', size=2.5, col="white",vjust=0)+
+  # scale_fill_manual(values = oroTypeAes$col, guide=FALSE)+
+  #                theme(
+  #                  axis.text.x = element_text(angle=90), 
+  #                  legend.position = 'none',
+  #                  panel.grid = element_blank(),
+  #                  axis.title.x = element_text(size=10)
+  #                  )
+  #   )+ 
+  #   geom_text(aes(label=..count..), stat='count', size=3,hjust=0)
+  stripes = "transparent",
+  width_ratio = 0.7,
+  height_ratio = 3,
+  set_sizes = FALSE
+  )+
+  theme(
+    panel.grid = element_blank(),
+    plot.background = element_blank(),
+    panel.background = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank()
+  )
+
+upset2_ggp
+
+
+## Save as svg for inkscape
+ggsave(
+  here::here("figures/infographic inkscape/2_way_upset.svg"),
+  plot=upset2_ggp,
+  width = 1.5, height=7
+)
+
+## Or add my own bar plot
+mySetSize_df <- oro_df %>%
+  group_by(oro_type)%>%
+  summarise(
+    weightedSum = sum(oro_weight, na.rm=T)
+  ) %>%
+  ungroup()
+
+
+mySetSize_ggp <- mySetSize_df%>%
+  ggplot()+
+  geom_col(aes(x=oro_type, y=weightedSum, fill = oro_type)) +
+  geom_text(aes(x=oro_type, y=weightedSum, 
+                label = scales::number(weightedSum, accuracy = 0.1)), 
+            size=5, vjust=0, hjust=0)+
+  coord_flip(clip="off")+
+  scale_fill_manual(
+    values = rev(oroTypeAes$col),
+    breaks = rev(oroTypeAes$levels),
+    guide="none"
+  )+
+  scale_x_discrete(
+    limits = rev(oroTypeAes$levels)
+  )+
+  labs(
+    y="N articles (weighted)"
+  )+
+  theme_minimal(base_size = 12)+
+  theme(
+    axis.text.y = element_blank(),
+    axis.title.y = element_blank(),
+    panel.grid = element_blank(),
+    axis.text.x = element_blank(),
+    axis.title.x = element_blank(),
+    panel.background = element_rect(fill="transparent", color=NA),
+    plot.background = element_rect(fill="transparent", color=NA),
+    plot.margin = unit(c(0,2,0,0), units = "cm")
+  )
+
+
+## Save as svg for inkscape
+ggsave(
+  here::here("figures/infographic inkscape/weighted_articles_bar.svg"),
+  plot=mySetSize_ggp,
+  width = 2, height=6
+)
+
 ```
 
 
@@ -1088,6 +1359,72 @@ ggsave(
 )
 
 ```
+
+
+```{r time scale ~ cid}
+oro_time_cid <- join_oro_with_multilabels(
+  oro_df = oro_df,
+  codedVars = codedVars,
+  label_cols = c("time_scale", "climatic_impact_driver"),
+  label_levels_list = list(
+    time_scale = c("<= 1 month","1 month <= 1 year","1 year <= 5 years","5 years <= 10 years","> 10 years","None"),
+    climatic_impact_driver = cidAes$levels[cidAes$order_extreme_long]
+  ),
+  id_col = "id"
+)%>%
+  filter(!grepl("None", time_scale), !grepl("None",climatic_impact_driver)) %>%
+  mutate(time_scale = droplevels(time_scale), climatic_impact_driver = droplevels(climatic_impact_driver))
+
+oro_time_cid_summary <- oro_time_cid %>%
+  group_by(time_scale, climatic_impact_driver) %>%
+  summarise(
+    weightedSum = sum(weightedSum, na.rm=T)
+  )
+
+
+## test for association chisq
+oro_time_cid_summary_wide <- oro_time_cid_summary%>%
+  pivot_wider(values_from = weightedSum, names_from = c(climatic_impact_driver),
+              values_fill = 0)
+
+time_cid_chisq <- chisq.test(oro_time_cid_summary_wide[,-1])
+time_cid_chisq
+# 	Pearson's Chi-squared test
+# 
+# data:  oro_time_cid_summary_wide[, -1]
+# X-squared = 12.536, df = 15, p-value = 0.6381
+
+cid_time_ggp <- ggplot(oro_time_cid_summary, 
+                       aes(x = climatic_impact_driver,
+                           y = time_scale))+
+  geom_tile(aes(fill = weightedSum))+
+  scale_fill_viridis()+
+  geom_text(aes(label = scales::number(weightedSum, accuracy=0.1)), size=3, color = "red")+
+  labs(
+    x = "Climatic impact driver",
+    y="Time scale",
+    fill = "N articles\n(weighted)",
+    caption = paste0(
+      "Chi-squared statistic = ", scales::number(time_cid_chisq$statistic, accuracy = 0.1),", ",time_cid_chisq$parameter," degrees of freedom, p-value = ", scales::number(time_cid_chisq$p.value, accuracy = 0.01)
+    )
+  )+
+  theme_minimal(base_size = 12)+
+  theme(
+    axis.text.x = element_text(angle = 45, hjust=1, vjust=1),
+    legend.position = "bottom"
+  )
+
+cid_time_ggp
+
+
+ggsave(
+  here::here("figures/supplemental/time_scale_cid_heatmap.pdf"),
+  plot = cid_time_ggp,
+  width = 5, height=4.5
+)
+
+```
+
 
 ```{r oro type ~ methods}
 
@@ -2289,6 +2626,37 @@ dashboard_df <- dashboard_df %>%
     )
   )
 
+## chi-squared tests -------------------
+dash_model_df <- dashboard_df %>%
+  select(factor_name, oro_type, axis_rank) %>%
+  pivot_wider(names_from = c("factor_name"), values_from = axis_rank) %>%
+  arrange(oro_type)
+
+gov_cor_test <- cor.test(
+  dash_model_df$governance_body,
+  dash_model_df$rules_of_law,
+  method = "kendall",
+  exact = TRUE
+)
+gov_cor_test
+# T = 13, p-value = 0.9049
+# alternative hypothesis: true tau is not equal to 0
+# sample estimates:
+#         tau 
+# -0.07142857 
+
+scale_cor_test <- cor.test(
+  dash_model_df$spatial_scale,
+  dash_model_df$time_scale,
+  method = "kendall",
+  exact = TRUE
+)
+scale_cor_test
+# T = 17, p-value = 0.5484
+# alternative hypothesis: true tau is not equal to 0
+# sample estimates:
+#       tau 
+# 0.2142857  
 
 
 ## bar plot facetted by dimension -------------
@@ -2631,7 +2999,8 @@ oro_rank_df <- join_oro_with_multilabels(
     oro_type, factor_name, factor_level
   ) %>%
   summarise(
-    n = n_distinct(id)
+    n = n_distinct(id),
+    n_weighted = sum(weight, na.rm=T)
   ) %>%
   ungroup()
 
@@ -2671,6 +3040,8 @@ level_rank_mat_ggp <- ggplot(oro_rank_df,
   )+
   scale_x_discrete(limits = rev(levels(oro_rank_df$oro_type)), drop=TRUE)+
   geom_tile(height = 0.8)+
+  geom_text(aes(label=scales::number(n_weighted, accuracy=0.1)), 
+            color="red", size=3)+
   scale_fill_stepsn(
     breaks = function(in_limits){seq(in_limits[1], in_limits[2], by=1)},
     colors = viridis(8),
@@ -4110,7 +4481,7 @@ summary(result_model_df)
 
 However, when all are fit together, which variables are most influential in predicting adaptive outcomes? Use Gradient boosted tree model
 
-```{r try gradient boosted tree model}
+```{r gradient boosted tree model}
 library(gbm)
 
 # fit the model
@@ -4320,6 +4691,217 @@ cm <- caret::confusionMatrix(as.factor(as.numeric(pr)), reference = as.factor(re
 cm[["byClass"]][c("F1","Recall","Precision")]
        # F1    Recall Precision 
        #  1         1         1
+```
+
+```{r gradient boosted tree model - incl climatic impact driver}
+library(gbm)
+
+# fit the model
+set.seed(123)
+result_gbm_df <- result_model_df %>%
+  mutate(
+    adaptive = as.numeric(adaptive)-1
+  ) %>%
+  filter(!if_any(everything(), ~ grepl("None", .))) %>%
+  mutate(
+    across(
+      where(is.factor),
+      ~droplevels(.x)
+    )
+  )%>%
+  # Add country indicators
+  left_join(id_country_data %>% 
+              select(-c(country, country_weight, iso3c)), 
+            by="id", relationship = "many-to-many")%>%
+  select(-id) 
+
+
+result_gbm_df$result_type = NULL
+# result_gbm_df$climatic_impact_driver = NULL
+
+## Subdivide into test and training sets
+set.seed(123)
+sub <- sample(2,nrow(result_gbm_df),replace=TRUE,prob=c(0.7,0.3))
+result_gbm_df.train <- result_gbm_df[sub==1,]
+result_gbm_df.test <- result_gbm_df[sub==2,]
+
+
+gbm_fit <- gbm(adaptive~.,distribution="bernoulli",data=result_gbm_df.train,
+           n.trees=1000,interaction.depth=3,shrinkage=0.05,cv.folds=3)
+
+## Select the optimal number of trees by cross validation
+best.iter <- gbm.perf(gbm_fit,method="cv")
+
+
+# The summary shows the variable importance
+gbm_summary <- summary(gbm_fit,n.trees=best.iter) %>%
+  as.data.frame()%>%
+  rename(Variable = var, `Relative influence`= rel.inf) %>%
+  mutate(
+    `Variable name`=stringr::str_to_sentence(gsub("_"," ", Variable)),
+    `Variable name` = case_when(
+      grepl("ORO ", `Variable name`, ignore.case=TRUE) ~ "Adaptation option",
+      TRUE ~ `Variable name`
+    )
+  )
+  
+gbm_summary 
+
+write.csv(gbm_summary%>%
+            select(`Variable name`, `Relative influence`),
+          file = here::here("outputs/adaptive_gbm_model_summary_2.csv"))
+
+
+## Partial dependence plots ? Or stick to the glm because it shows significance?
+
+# Generate ggplots from gbm partial dependencies
+gbm_plot_list <- lapply(1:nrow(gbm_summary), function(i) {
+  var_name <- gbm_summary$Variable[i]
+  var_name_sym <- rlang::sym(var_name)
+  var_label <- gbm_summary$`Variable name`[i]
+  relInfluence <- gbm_summary$`Relative influence`[i]%>%
+    scales::number(cale_cut = scales::cut_short_scale())
+  relInfluence <- paste("Relative influence =", relInfluence)
+  
+  if(class(result_gbm_df.train[,var_name])=="numeric"){
+    ## If numeric
+    pd_data <- plot.gbm(gbm_fit, var_name, n.trees = best.iter, return.grid = TRUE, type="response") %>%
+      mutate(
+        x = as.numeric(paste0(!!var_name_sym))
+        
+      )%>%
+      arrange(!!var_name_sym)
+    
+    
+    n_samples <- data.frame(x=result_gbm_df[,var_name])
+    sample_dens <- ggplot()+ geom_density(data = n_samples, aes(x=x), inherit.aes = FALSE)
+    sample_dens <- layer_data(sample_dens)
+    sample_dens$density_scaled <- scales::rescale(
+      sample_dens$density,
+      to = range(pd_data$y, na.rm=T)
+    )
+    
+    # Create ggplot
+    ggplot(pd_data, aes(x = x, y = y)) +
+      geom_ribbon(
+        data = sample_dens,
+        aes(x=x, ymax = density_scaled),
+        fill="grey", alpha=0.5, ymin = min(pd_data$y, na.rm=T)
+      )+
+      geom_line(color = "steelblue", linewidth=1) +
+      geom_text(
+        x = -Inf, label = relInfluence, y=Inf, hjust = 0, vjust=1,
+        size=3
+      )+
+      labs(
+        title = var_label,
+        y = "Pr of adaptive outcome",
+        x=""
+      ) +
+      scale_y_continuous(
+        expand = expansion(mult = c(0,0.3)),
+        labels = scales::label_number(accuracy = 0.01)
+      )+
+      coord_cartesian(clip="off")+
+      theme_minimal(base_size = 10)+
+      theme(
+        axis.title = element_text(size=9),
+        axis.text.y = element_text(size=9),
+        axis.text.x = element_text(angle = 45, hjust=1, size=9)
+      )
+    
+  }else{
+    
+    ## If categorical
+    n_samples <- table(result_gbm_df.train[,var_name]) %>% 
+    as.data.frame() %>%
+    rename_with(~ var_name, .cols = "Var1")
+    
+    # recalculate counts of n articles from original data 
+    if(var_name == "oro_type"){
+      
+      for(s in 1:nrow(n_samples)){
+        oroSamp <- oro_df %>%
+          filter(grepl(as.character(n_samples[s,var_name]), oro_type)) %>%
+          summarise(
+            n = n_distinct(id)
+          )
+        n_samples$Freq[s] <- oroSamp$n
+      }
+      
+    }else{
+      for(s in 1:nrow(n_samples)){
+        n_samples$Freq[s] <- sum(grepl(as.character(n_samples[s,var_name]), codedVars[[var_name]], fixed = TRUE))
+      }
+    }
+    
+    
+    
+  
+    pd_data <- plot.gbm(gbm_fit, var_name, n.trees = best.iter, return.grid = TRUE, type="response") %>%
+      left_join(n_samples, by = var_name) %>%
+      mutate(
+        xlabel = paste0(!!var_name_sym, "\n(n = ", Freq,")")
+      )%>%
+      arrange(!!var_name_sym)
+    pd_data$xlabel <- factor(
+      pd_data$xlabel,
+      levels = pd_data$xlabel[order(pd_data[,var_name])]
+    )
+    
+    
+    # Create ggplot
+    ggplot(pd_data, aes(x = xlabel, y = y)) +
+      geom_point(color = "steelblue", size=3) +
+      geom_text(
+        x = -Inf, label = relInfluence, y=Inf, hjust = 0, vjust=1,
+        size=3
+      )+
+      labs(
+        title = var_label,
+        y = "Pr of adaptive outcome",
+        x=""
+      ) +
+      # scale_x_discrete(
+      #   labels = function(x){
+      #     str_wrap(gsub("/"," / ", x), width = 35)
+      #     }
+      # )+
+      scale_y_continuous(
+        expand = expansion(mult = c(0,0.3)),
+        labels = scales::label_number(accuracy = 0.01)
+      )+
+      coord_cartesian(clip="off")+
+      theme_minimal(base_size = 10)+
+      theme(
+        axis.title = element_text(size=9),
+        axis.text.y = element_text(size=9),
+        axis.text.x = element_text(angle = 45, hjust=1, size=9)
+      )
+  } ## End of if categorical
+  
+  
+})
+
+# Combine using patchwork
+combined_gbm_plot <- wrap_plots(gbm_plot_list, ncol = 3) +
+  plot_annotation(tag_levels = 'a')
+
+# Save to PDF
+ggsave(here::here("figures/main/gbm_partial_dependence_plots_2.pdf"),
+       combined_gbm_plot, width = 10.5, height = 12)
+
+
+
+
+## Assess on the test set
+pr <- predict(gbm_fit, newdata=result_gbm_df.test, type="response") > 0.5
+
+cm <- caret::confusionMatrix(as.factor(as.numeric(pr)), reference = as.factor(result_gbm_df.test$adaptive))
+
+cm[["byClass"]][c("F1","Recall","Precision")]
+#        F1    Recall Precision 
+# 0.8888889 0.8000000 1.0000000 
 ```
 
 
