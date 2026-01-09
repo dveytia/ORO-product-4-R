@@ -802,70 +802,166 @@ dev.off()
 ## Upset just two orders ---------------
 require(ComplexUpset)
 oroTypeDf_wide2 <- as.data.frame(oroTypeDf_wide)
+# oroTypeDf_wide2 <- oroTypeDf_wide2 %>%
+#   left_join(oro_df[,c("id","oro_weight")], by = "id")
+#   distinct(id, oro_weight, .keep_all = TRUE)
+dim(oroTypeDf_wide2)
 oroTypeDf_wide2$id <- NULL
-oroTypeDf_wide2 = oroTypeDf_wide2 ==1
+set_cols <- colnames(oroTypeDf_wide2)
+set_cols <- set_cols[set_cols != "oro_weight"]
+oroTypeDf_wide2[set_cols] = oroTypeDf_wide2[set_cols] ==1
 
 # Remove columns where less than 2-way interaction
-oroTypeDf_wide2 <- oroTypeDf_wide2[-which(rowSums(oroTypeDf_wide2) < 2),]
+oroTypeDf_wide2 <- oroTypeDf_wide2[-which(rowSums(oroTypeDf_wide2[set_cols]) < 2),]
 
-set_cols <- colnames(oroTypeDf_wide2)
+# set_cols <- colnames(oroTypeDf_wide2)
 
 sum(is.na(oroTypeDf_wide2)) #0
-sum(!is.logical(oroTypeDf_wide2))#0
 
 oroTypeDf_wide2 <- as.data.frame(oroTypeDf_wide2)
 
+# tmp <- upset_data(
+#   oroTypeDf_wide2,
+#   set_cols
+# ) 
+
+weighted_set_sizes <- oro_df %>%
+  group_by(oro_type) %>%
+  summarise(value = sum(oro_weight, na.rm = TRUE)) %>%
+  rename(group = oro_type)%>%
+  mutate(
+    group = as.integer(group)
+  )
+weighted_set_sizes$group <- rev(weighted_set_sizes$group)
+
+
+
 upset2_ggp <- ComplexUpset::upset(
   oroTypeDf_wide2, 
-  width_ratio = 0.4,
-  height_ratio = 1.5,
-  intersect=set_cols,
+  intersect=rev(set_cols),
   sort_sets=FALSE,
   min_degree=2, max_degree =2,
   base_annotations = list(
-    'Intersection size' = intersection_size(
-      text = list(size=3, angle = 90, hjust = 0, vjust=0.5)
-      )+
+    'Intersection ratio'=intersection_ratio(
+      # mode = "inclusive_intersection",
+      text_mapping=aes(label=!!upset_text_percentage()),
+      text = list(size=3, angle = 90, hjust = 0, vjust=0.5))+
       theme(
         panel.grid = element_blank(),
         axis.text = element_blank(),
         axis.title.y = element_blank()
         )
+    
     ),
-  set_sizes=(
+  set_sizes = (
     upset_set_size(
-      geom = geom_bar(aes(fill=group)))+
-                 geom_text(aes(label=..count..), hjust=1.1, stat='count', size=2.5, col="white")+
-  scale_fill_manual(values = oroTypeAes$col, guide=FALSE)+
+      # position="right",
+      geom =geom_col(
+          data = weighted_set_sizes,
+          aes(x = group, y = value, fill = as.factor(group)),
+          stat = "identity"
+        )
+      
+    )+
+      scale_fill_manual(values = rev(oroTypeAes$col), guide=FALSE)+
                  theme(
-                   axis.text.x = element_text(angle=90), 
+                   axis.text.x = element_text(angle=270),
+                   axis.text.y = element_blank(),
                    legend.position = 'none',
                    panel.grid = element_blank(),
-                   axis.title.x = element_text(angle = 180, hjust=0,size=10)
-                   )
-    )+ 
-    geom_text(aes(label=..count..), stat='count', angle=180, hjust=0, size=3)+
-    expand_limits(y=70)
-  ,
-  stripes = "transparent"
+                   axis.title.x = element_text(angle = 180,
+                                               hjust=0,size=10)
+                   )+
+      geom_text(
+        data = weighted_set_sizes,
+        aes(x = group, y=value, label=scales::number(value, accuracy = 0.1)), hjust=0, size=5)
+  ),
+  expand_limits(y=70),
+  stripes = "transparent",
+  mode = "inclusive_intersection",
+  sort_intersections_by="ratio",
+  width_ratio = 0.4,
+  height_ratio = 5
   )+
   theme(
     panel.grid = element_blank(),
     axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
     axis.title.y = element_blank(),
-    axis.text.y = element_text(angle = 180, hjust=0, size=10)
+    # axis.text.y = element_text(angle = 180, hjust=0, size=10),
+    axis.text.y = element_blank(),
+    plot.background = element_blank()
   )
 
 upset2_ggp
 
 
+## simple example
+upset3_ggp <- ComplexUpset::upset(
+  oroTypeDf_wide2, 
+  intersect=rev(set_cols),
+  sort_sets=FALSE,
+  min_degree=2, max_degree =2,
+  base_annotations = list(
+    'Intersection ratio'=intersection_ratio(
+      text_mapping=aes(label=!!upset_text_percentage()),
+      text = list(size=3, angle = 90, hjust = 0, vjust=0.5))+
+      theme(
+        panel.grid = element_blank(),
+        axis.text = element_blank(),
+        axis.title.y = element_blank()
+        )
+    
+    ),
+  set_sizes=(
+        upset_set_size(
+            geom=geom_col(
+                data = weighted_set_sizes,
+          aes(x = group, y = value, fill = as.factor(group)),
+          stat = "identity"
+            ),
+            position='right'
+        )+
+          geom_text(
+        data = weighted_set_sizes,
+        aes(x = group, y=value, label=scales::number(value, accuracy = 0.1)), hjust=0, size=5)+
+      scale_fill_manual(values = rev(oroTypeAes$col), guide=FALSE)+
+        expand_limits(y=70)+
+                 theme(
+                   axis.text.x = element_text(angle=270),
+                   axis.text.y = element_blank(),
+                   legend.position = 'none',
+                   panel.grid = element_blank(),
+                   axis.title.x = element_text(angle = 180,
+                                               hjust=0,size=10)
+                   )
+    ),
+  
+  stripes = "transparent",
+  mode = "inclusive_intersection",
+  sort_intersections_by="ratio",
+  width_ratio = 0.6,
+  height_ratio = 5
+  )+
+  theme(
+    panel.grid = element_blank(),
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.title.y = element_blank(),
+    # axis.text.y = element_text(angle = 180, hjust=0, size=10),
+    axis.text.y = element_blank(),
+    plot.background = element_blank()
+  )
+
+# upset3_ggp
+
 
 
 ## Save as svg for inkscape
 ggsave(
-  here::here("figures/infographic inkscape/2_way_upset.svg"),
-  plot=upset2_ggp,
-  width = 7, height=3.5
+  here::here("figures/infographic inkscape/2_way_upset_full.svg"),
+  plot=upset3_ggp,
+  width = 5, height=7
 )
 
 
@@ -873,21 +969,30 @@ ggsave(
 
 
 ## Or adjust ratios
-upset2_ggp <- ComplexUpset::upset(
+upset4_ggp <- ComplexUpset::upset(
   oroTypeDf_wide2, 
   intersect=rev(set_cols),
   sort_sets=FALSE,
   min_degree=2, max_degree =2,
   base_annotations = list(
-    'Intersection size' = intersection_size(
-      text = list(size=3)
-      )+
+    # 'Intersection size' = intersection_size(
+    #   text = list(size=3)
+    #   )+
+    #   theme(
+    #     panel.grid = element_blank(),
+    #     axis.text = element_blank(),
+    #     axis.title.y = element_blank(),
+    #     plot.background = element_blank(),
+    # panel.background = element_blank()
+    #     )
+    # Or show intersection ratio
+    'Intersection ratio'=intersection_ratio(
+      text_mapping=aes(label=!!upset_text_percentage()),
+      text = list(size=3, angle = 90, hjust = 0, vjust=0.5))+
       theme(
         panel.grid = element_blank(),
         axis.text = element_blank(),
-        axis.title.y = element_blank(),
-        plot.background = element_blank(),
-    panel.background = element_blank()
+        axis.title.y = element_blank()
         )
     ),
   # set_sizes=(
@@ -906,7 +1011,9 @@ upset2_ggp <- ComplexUpset::upset(
   stripes = "transparent",
   width_ratio = 0.7,
   height_ratio = 3,
-  set_sizes = FALSE
+  set_sizes = FALSE,
+  mode = "inclusive_intersection",
+  sort_intersections_by = "ratio"
   )+
   theme(
     panel.grid = element_blank(),
@@ -917,7 +1024,7 @@ upset2_ggp <- ComplexUpset::upset(
     axis.text.y = element_blank()
   )
 
-upset2_ggp
+upset4_ggp
 
 
 ## Save as svg for inkscape
@@ -1651,6 +1758,386 @@ time_scale_ggp <- ggplot(type_time_scale_joined %>%
 
 time_scale_ggp
 
+
+govtest <- expand_labels_with_weight(codedVars, id, governance_body)
+unique(govtest$label)
+## Governance panels
+type_governance_joined <- join_oro_with_label(
+  oro_df, 
+  codedVars, 
+  governance_body, 
+  c("Community-based","National government",
+                        "Regional (e.g. RFMOs)","International",
+                        "Private organizations/companies")
+  )%>%
+  filter(label != "None identified") %>%
+  mutate(label = droplevels(label))
+
+type_governance_joined_totals <- type_governance_joined %>%
+  group_by(label) %>%
+  summarise(
+    weightedSumTotal = sum(weightedSum, na.rm = T)
+  )
+
+type_governance_joined <- type_governance_joined %>%
+  left_join(type_governance_joined_totals, by = "label") %>%
+  mutate(
+    Proportion = weightedSum/weightedSumTotal
+  ) %>%
+  dplyr::select(-weightedSumTotal)
+
+type_governance_joined <- reshape2::melt(type_governance_joined, 
+                                  measure.vars = c("weightedSum","Proportion"),
+                                  value.name = "Value",
+                                  variable.name = "Metric") %>%
+  mutate(
+    Metric = factor(Metric, levels = c("weightedSum","Proportion"),
+                    labels = c("N articles (weighted)", "Proportion"))
+  )
+
+# WIth n articles and proportion
+governance_ggp <- ggplot(type_governance_joined, aes(x=label, y=Value, fill = oro_type))+
+  facet_wrap(vars(Metric), scales = "free_y", ncol=1)+
+  geom_col(position="stack")+
+  labs(
+    x = "Governance body",
+    y="Value",
+    fill = "Option type"
+  )+
+  scale_fill_manual(
+    values = oroTypeAes$col,
+    breaks = oroTypeAes$levels
+  )+
+  theme_bw(base_size = 12)+
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1),
+    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
+  )
+
+
+# Or just number
+governance_ggp <- ggplot(type_governance_joined %>%
+                              filter(Metric == "N articles (weighted)"), 
+                            aes(x=label, y=Value, fill = oro_type))+
+  geom_col(position="stack")+
+  geom_text(
+    data = type_governance_joined %>%
+      filter(Metric == "N articles (weighted)") %>%
+      group_by(label) %>%
+      summarise(
+        Value = sum(Value, na.rm = T)
+      ),
+    aes(x=label, y=Value, label = scales::number(Value)),
+    size = 3, vjust=0, inherit.aes=F
+  )+
+  coord_cartesian(clip="off")+
+  labs(
+    x = "Governance body",
+    y="N articles (weighted)",
+    fill = "Option type"
+  )+
+  scale_fill_manual(
+    values = oroTypeAes$col,
+    breaks = oroTypeAes$levels
+  )+
+  theme_bw(base_size = 12)+
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1),
+    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
+  )
+
+
+governance_ggp
+
+
+
+
+require(patchwork)
+
+# Combine using patchwork
+plotList = list(
+  spatial_scale_ggp+theme(legend.position = "none", plot.margin = unit(rep(0.2,4), units="cm")), 
+  time_scale_ggp+theme(legend.position = "none", plot.margin = unit(rep(0.2,4), units="cm")),
+  governance_ggp+theme(plot.margin = unit(rep(0.2,4), units = "cm"))
+  )
+combined_patchwork <- wrap_plots(plotList, ncol = 3, guides = "collect") + 
+  plot_annotation(tag_levels = 'a') &
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) &
+  theme(legend.position = "bottom")
+
+ggsave(here::here("figures/supplemental/spatial_time_scale_governance_barplots.pdf"),
+       combined_patchwork, width = 9, height = 5)
+
+
+
+```
+
+```{r governance body ~ time scale ~ spatial scale ~ oro type -- main text version}
+
+## Panel a heatmap of spatial scale ----------------
+## Spatial scale panels
+type_spatial_scale_joined <- join_oro_with_label(
+  oro_df, 
+  codedVars, 
+  spatial_scale, 
+  c("Local","National","Regional","Global","None")
+  ) 
+  # filter(label != "None") %>%
+  # mutate(label = droplevels(label))
+
+type_spatial_scale_joined_totals <- type_spatial_scale_joined %>%
+  group_by(label) %>%
+  summarise(
+    weightedSumTotal = sum(weightedSum, na.rm = T)
+  )
+
+type_spatial_scale_joined <- type_spatial_scale_joined %>%
+  left_join(type_spatial_scale_joined_totals, by = "label") %>%
+  mutate(
+    Proportion = weightedSum/weightedSumTotal
+  ) %>%
+  select(-weightedSumTotal)
+
+type_spatial_scale_joined <- reshape2::melt(type_spatial_scale_joined, 
+                                  measure.vars = c("weightedSum","Proportion"),
+                                  value.name = "Value",
+                                  variable.name = "Metric") %>%
+  mutate(
+    Metric = factor(Metric, levels = c("weightedSum","Proportion"),
+                    labels = c("N articles (weighted)", "Proportion"))
+  )
+
+
+# Make my own special color scale
+type_spatial_scale_joined_n <- type_spatial_scale_joined%>%
+                              filter(Metric == "N articles (weighted)") %>%
+  mutate(
+    Value_cut = cut(Value, 
+                     breaks = pretty(type_spatial_scale_joined_n$Value,n = 8)))
+
+# Specific per-oro col pal
+oros <- levels(type_spatial_scale_joined_n$oro_type)
+cut_breaks <- levels(type_spatial_scale_joined_n$Value_cut)
+n_cuts <- length(cut_breaks)
+
+col_lookup <- data.frame(
+  oro_type = rep(oroTypeAes$levels, n_cuts) %>% sort(),
+  Value_cut = rep(cut_breaks, length(oros)),
+  my_color = rep(NA, n_cuts*length(oros))
+) %>%
+  mutate(oro_type = factor(oro_type, levels = oroTypeAes$levels),
+         Value_cut = factor(Value_cut, levels = cut_breaks)) %>%
+  arrange(oro_type, Value_cut) %>%
+  left_join(oroTypeAes %>% select(levels, branch),
+            by = c("oro_type"="levels"))
+
+require(scales)
+require(colorspace)
+for(o in 1:length(oros)){
+  ind <- which(col_lookup$oro_type == oros[o])
+  ind <- ind[order(col_lookup$Value_cut[ind])]
+  oro_branch <- oroTypeAes$branch[oroTypeAes$levels == oros[o]]
+  branch_cols <- oroTypeAes$col[oroTypeAes$branch == oro_branch]
+  start_col <- lighten(branch_cols[2], amount = 0.8)
+  end_col <- darken(branch_cols[1], amount=0.5)
+  scales::show_col(c(start_col, end_col))
+  
+  col_lookup$my_color[ind] <- pal_seq_gradient(start_col, end_col)(seq(from=0,to=1, length.out = length(ind)))
+}  
+
+# Match color scale to the value
+type_spatial_scale_joined_n <- type_spatial_scale_joined_n %>%
+  left_join(col_lookup, by = c("oro_type","Value_cut"))
+
+# make legend
+spat_scale_leg <- ggplot(col_lookup %>%
+                           distinct(branch, Value_cut, my_color) %>%
+                           mutate(branch = factor(branch, 
+                                                  levels = c(
+                                                    "Socio-institutional",
+                                                    "Technology",
+                                                    "Infrastructure"
+                                                  ))),
+                         aes(x=Value_cut, y=branch, fill = my_color))+
+  geom_tile()+
+  scale_fill_identity()+
+  geom_text(
+    data= data.frame(
+      x = seq(0.5, length.out = n_cuts+1, by=1),
+      labels = pretty(type_spatial_scale_joined_n$Value,n = 8)
+    ),
+    aes(x=x, label = labels), y=0, inherit.aes = FALSE
+  )+
+  labs(
+    title = "N articles (weighted)",
+    y=""
+  )+
+  coord_fixed(clip = "off")+
+  theme_minimal(base_size = 10)+
+  theme(
+    axis.text.x = element_blank(),
+    axis.title.x = element_blank(),
+    axis.ticks = element_blank()
+  )
+spat_scale_leg
+
+# Plot
+spatial_scale_ggp <- ggplot(type_spatial_scale_joined_n %>%
+                              mutate(text_color = ifelse(Value > 15,"white","black")), 
+                            aes(x=label, y=oro_type, fill = my_color))+
+  geom_tile()+
+  scale_fill_identity(guide=FALSE)+
+  scale_color_identity(guide=FALSE)+
+  # scale_fill_distiller(palette = "Blues", direction=1)+
+  geom_text(
+    aes(label = scales::number(Value, accuracy = 0.1), color = text_color),
+    size = 3
+  )+
+  coord_cartesian(clip="off")+
+  labs(
+    x = "Spatial scale",
+    y = "Option type"
+  )+
+  theme_bw(base_size = 12)+
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1),
+    axis.line.x = element_line(arrow = grid::arrow(length = unit(0.3, "cm"), 
+                                                       ends = "last")),
+    axis.ticks.y = element_blank(),
+    panel.grid = element_blank(),
+    panel.border = element_blank(),
+    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
+  )
+
+
+spatial_scale_ggp
+
+
+
+
+## Time scale stepwise bar plot ----------------
+type_time_scale_joined <- join_oro_with_label(
+  oro_df, 
+  codedVars, 
+  time_scale, 
+  c("<= 1 month","1 month <= 1 year","1 year <= 5 years","5 years <= 10 years","> 10 years","None")
+  ) 
+  # filter(label != "None") %>%
+  # mutate(label = droplevels(label))
+
+type_time_scale_joined_totals <- type_time_scale_joined %>%
+  group_by(label) %>%
+  summarise(
+    weightedSumTotal = sum(weightedSum, na.rm = T)
+  )
+
+type_time_scale_joined <- type_time_scale_joined %>%
+  left_join(type_time_scale_joined_totals, by = "label") %>%
+  mutate(
+    Proportion = weightedSum/weightedSumTotal
+  ) %>%
+  select(-weightedSumTotal)
+
+type_time_scale_joined <- reshape2::melt(type_time_scale_joined, 
+                                  measure.vars = c("weightedSum","Proportion"),
+                                  value.name = "Value",
+                                  variable.name = "Metric") %>%
+  mutate(
+    Metric = factor(Metric, levels = c("weightedSum","Proportion"),
+                    labels = c("N articles (weighted)", "Proportion"))
+  )
+
+# Just use number of articles not proportion
+type_time_scale_joined_n <- type_time_scale_joined %>%
+  filter(Metric == "N articles (weighted)") %>%
+  mutate(
+    label = forcats::fct_relevel(label, c("None", "<= 1 month","1 month <= 1 year","1 year <= 5 years","5 years <= 10 years","> 10 years")),
+    adj_value = (as.numeric(label)-2)*5, 
+    adj_value = ifelse(label == "None", 5, adj_value)
+  ) %>%
+  arrange(label, oro_type) %>%
+  group_by(label) %>%
+  mutate(
+    start = dplyr::lag(cumsum(Value), default = 0)+adj_value,
+    end = cumsum(Value)+adj_value,
+    n_articles = cumsum(Value),
+    label_numeric = as.numeric(label),
+    label_numeric = ifelse(label == "None", label_numeric-1, label_numeric),
+    width_min = as.numeric(label_numeric)-0.45,
+    width_max = as.numeric(label_numeric)+0.45
+  )
+
+time_scale_ggp <- ggplot(
+  type_time_scale_joined_n
+)+
+  geom_rect(
+    data = type_time_scale_joined_n %>%
+      filter(label != "None"),
+    aes(xmin = start, xmax = end, ymin = width_min, ymax = width_max, fill = oro_type))+
+  ggpattern::geom_rect_pattern(
+    data = type_time_scale_joined_n %>%
+      filter(label == "None"),
+    mapping = ggplot2::aes(
+      xmin = start, xmax = end, ymin = width_min, ymax = width_max, fill = oro_type
+    ),
+    pattern = "magick",
+    pattern_type = "crosshatch45",
+    pattern_fill = "black",
+    pattern_aspect_ratio = 1.5,
+    color = "black",
+    size = 0.1
+  )+
+  scale_y_reverse(
+    breaks = 1:length(levels(type_time_scale_joined_n$label)),
+    labels = levels(type_time_scale_joined_n$label)
+  )+
+  scale_x_continuous(
+    expand = expansion(mult = c(0.5, 0.2))
+  )+
+  # label the time scale
+  geom_text(
+    aes(x = adj_value, y=width_min+0.45, label = label),
+    vjust=0.5, hjust=1, nudge_x=-1, size=4, fontface = "bold",
+    check_overlap = TRUE
+  )+
+  # label the number of articles
+  geom_text(
+    data = type_time_scale_joined_n %>% group_by(label) %>% arrange(oro_type)%>% slice(n()),
+    aes(x = end, y=width_min+0.45, label = n_articles),
+    vjust=0.5, hjust=0, nudge_x=1, size=3, fontface = "italic",
+    check_overlap = TRUE
+  )+
+  scale_fill_manual(
+    breaks = oroTypeAes$levels,
+    values = oroTypeAes$col
+  )+
+  guides(
+    fill=guide_legend(ncol=4, title.position = "top", title.hjust = 0.5,
+                      override.aes = list(pattern = "none")))+
+  labs(
+    y = "Time since implementation",
+    x = "N articles (weighted)",
+    fill = "Option type"
+  )+
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.background = element_blank(),
+    axis.line.y = element_line(arrow = grid::arrow(length = unit(0.3, "cm"), 
+                                                       ends = "first", type = "closed")),
+    legend.position = "bottom",
+    plot.margin = unit(rep(10,4), "pt")
+  )
+
+time_scale_ggp
+
+oro_legend <- ggpubr::get_legend(time_scale_ggp)
+
+
+
+## Governance ladder, or pyramid ? -----------------
 
 govtest <- expand_labels_with_weight(codedVars, id, governance_body)
 unique(govtest$label)
