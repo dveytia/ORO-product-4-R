@@ -895,43 +895,223 @@ weighted_set_sizes$group <- rev(weighted_set_sizes$group)
 # 
 # upset2_ggp
 
-# Check percentages are right --- no they're not
+
+## Calculate intersection as a 2-way percentage --------------
+# Check percentages in upset are right --- no they're not
 # So the percentages are only out of the 2nd order intersections
 oros <- levels(oro_df$oro_type)
-oro_interactions <- combn(oros, 2)
+oro_interactions <- expand.grid(oros, oros)
+
 oro_intersect_percentages <- data.frame(
-  oro1 = oro_interactions[1,],
-  oro2 = oro_interactions[2,],
+  oro1 = oro_interactions[,1],
+  oro2 = oro_interactions[,2],
   n_union = rep(NA, length(ncol(oro_interactions))),
   n_intersect = rep(NA, length(ncol(oro_interactions))),
   n_percent = rep(NA, length(ncol(oro_interactions)))
 )
-for(c in 1:ncol(oro_interactions)){
-  oro_intersect_percentages$n_union[c] <- sum(oroTypeDf_wide2[oro_interactions[1,c]] |
-                       oroTypeDf_wide2[oro_interactions[2,c]])
-  oro_intersect_percentages$n_intersect[c] <- sum(oroTypeDf_wide2[oro_interactions[1,c]] &
-                       oroTypeDf_wide2[oro_interactions[2,c]])
+for(c in 1:nrow(oro_interactions)){
+  oro_intersect_percentages$n_union[c] <- sum(oroTypeDf_wide2[oro_interactions[c,1]] |
+                       oroTypeDf_wide2[oro_interactions[c,2]])
+  oro_intersect_percentages$n_intersect[c] <- sum(oroTypeDf_wide2[oro_interactions[c,1]] &
+                       oroTypeDf_wide2[oro_interactions[c,2]])
   oro_intersect_percentages$n_percent[c] <- oro_intersect/(oro_union)
   
 }
+# Set lower triangle to na
 oro_intersect_percentages<- oro_intersect_percentages %>%
   mutate(
-    n_percent = n_intersect/n_union*100,
-    oro1 = gsub("-","_", oro1),
-    oro2 = gsub("-","_", oro2),
+    n_percent = n_intersect/n_union*100
+  ) %>%
+  mutate(
+    n_percent_na = ifelse(as.numeric(oro2) <= as.numeric(oro1), NA, n_percent)
   )
 
-## plot as a matrix
-intesect_percent_matrix_ggp <- ggplot(
+
+# Make my own fill colors
+cut_breaks <- pretty(oro_intersect_percentages$n_percent_na, n = 5)
+oro_intersect_percentages$n_percent_na_cut <- cut(
+  oro_intersect_percentages$n_percent_na, cut_breaks
+)
+oros <- levels(oro_intersect_percentages$oro1)
+cut_breaks_levels <- levels(oro_intersect_percentages$n_percent_na_cut)
+n_cuts <- length(cut_breaks_levels)
+
+col_lookup_1 <- data.frame(
+  oro_type = rep(oroTypeAes$levels, n_cuts) %>% sort(),
+  n_percent_na_cut = rep(cut_breaks_levels, length(oros)),
+  my_color = rep(NA, n_cuts*length(oros))
+) %>%
+  mutate(oro1 = factor(oro_type, levels = oroTypeAes$levels),
+         n_percent_na_cut = factor(n_percent_na_cut, levels = cut_breaks_levels)) %>%
+  arrange(oro1, n_percent_na_cut) %>%
+  left_join(oroTypeAes %>% select(levels, branch),
+            by = c("oro1"="levels"))
+
+require(scales)
+require(colorspace)
+for(o in 1:length(oros)){
+  ind <- which(col_lookup_1$oro_type == oros[o])
+  ind <- ind[order(col_lookup_1$n_percent_na_cut[ind])]
+  oro_branch <- oroTypeAes$branch[oroTypeAes$levels == oros[o]]
+  branch_cols <- oroTypeAes$col[oroTypeAes$branch == oro_branch]
+  start_col <- lighten(branch_cols[2], amount = 0.8)
+  end_col <- darken(branch_cols[1], amount=0.2)
+  scales::show_col(c(start_col, end_col))
+  
+  col_lookup_1$my_color[ind] <- pal_seq_gradient(start_col, end_col)(seq(from=0,to=1, length.out = length(ind)))
+}  
+
+# Match color scale to the value
+oro_intersect_percentages <- oro_intersect_percentages %>%
+  left_join(col_lookup_1, by = c("oro1","n_percent_na_cut"))
+
+# make legend
+interaction_mat_leg <- ggplot(col_lookup_1 %>%
+                           distinct(branch, n_percent_na_cut, my_color) %>%
+                           mutate(branch = factor(branch, 
+                                                  levels = c(
+                                                    "Socio-institutional",
+                                                    "Technology",
+                                                    "Infrastructure"
+                                                  ))),
+                         aes(x=n_percent_na_cut, y=branch, fill = my_color))+
+  geom_tile()+
+  scale_fill_identity()+
+  geom_text(
+    data= data.frame(
+      x = seq(0.5, length.out = n_cuts+1, by=1),
+      labels = pretty(type_spatial_scale_joined_n$Value,n = 8)
+    ),
+    aes(x=x, label = labels), y=0, inherit.aes = FALSE
+  )+
+  labs(
+    title = "Intersection (%)",
+    y=""
+  )+
+  coord_fixed(clip = "off")+
+  theme_minimal(base_size = 10)+
+  theme(
+    axis.text.x = element_blank(),
+    axis.title.x = element_blank(),
+    axis.ticks = element_blank()
+  )
+interaction_mat_leg
+
+
+## plot intersections as a matrix with geom_point -------------------
+intersect_percent_matrix_ggp <- ggplot(
   data = oro_intersect_percentages 
 )+
-  geom_tile(aes(x=oro1, y=oro2, fill = n_percent))+
+  geom_point(aes(x=oro1, y=oro2, 
+                 fill =my_color,
+                 # fill = n_percent_na, 
+                 size=n_percent_na), shape = 21)+
+  geom_text(
+    data = oro_intersect_percentages %>%
+      filter(25 <= n_percent_na),
+    aes(x=oro1, y=oro2, label = scales::number(n_percent_na, accuracy = 1)),
+    color = "white",size=3
+  )+
+  scale_size_continuous(range = c(2,10))+
+  scale_fill_identity()+
+  scale_x_discrete(limits = levels(oro_intersect_percentages$oro2), position = "top")+
+  scale_y_discrete(limits = oroTypeAes$levels%>% rev())+
+  guides(size = "none", fill = "none")+
+  labs(
+    x="", y = ""
+  )+
+  theme_minimal(base_size = 12)+
   theme(
-    axis.text.x = element_text(angle=45, hjust=1, vjust=1)
+    panel.background = element_rect(fill='transparent', color = NA), #transparent panel bg
+    plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
+    panel.grid.major = element_blank(), #remove major gridlines
+    panel.grid.minor = element_blank(), #remove minor gridlines
+    legend.background = element_rect(fill='transparent'), #transparent legend bg
+    legend.box.background = element_rect(fill='transparent'), #transparent legend panel
+    axis.text.x = element_text(angle=90, hjust=0, vjust=0.5)
   )
-intesect_percent_matrix_ggp
+intersect_percent_matrix_ggp
 
- ## full upset with bar on right 
+
+## Save 
+interaction_patch <- wrap_plots(
+  list(intersect_percent_matrix_ggp + theme(axis.text.y = element_blank()), 
+       interaction_mat_leg+theme(axis.text.x = element_blank(), plot.title = element_text(margin = margin(b=5)))
+       ),
+  ncol = 1, heights = c(1, 0.15)
+)
+ggsave(
+  here::here("figures/infographic inkscape/intersect_dot_plot.svg"),
+  plot = interaction_patch,
+  width = 4, height=9, units = "in"
+)
+ggsave(
+  here::here("figures/infographic inkscape/intersect_dot_plot.png"),
+  plot = interaction_patch,
+  width = 4, height=9, units = "in", bg="transparent"
+)
+
+
+## Plot intersections as 3D heatmap -----------------
+require(ggalign)
+
+# As matrix
+oro_intersect_matrix <- oro_intersect_percentages %>%
+  select(oro1, oro2, n_percent) %>%
+  pivot_wider(names_from = oro2, values_from=n_percent) %>%
+  as.matrix()
+rownames(oro_intersect_matrix) <- oro_intersect_matrix[,1]
+
+oro_intersect_matrix <- oro_intersect_matrix[,-1]
+oro_intersect_matrix[upper.tri(oro_intersect_matrix, diag=TRUE)] <- NA
+class(oro_intersect_matrix) <- "numeric"
+oro_intersect_matrix
+
+# Plot 3D heatmap 
+intersect_3d_heatmap <- ggheatmap(oro_intersect_matrix, 
+          filling = NULL,
+          theme = theme(
+        legend.box.spacing = unit(10, "mm"),
+        plot.margin = margin(t = 15, unit = "mm")
+    )) +
+   geom_tile3d(
+        aes(fill = value, z = value, width = 0.8, height = 0.8),
+        color = "black"
+    ) +
+    scale_fill_distiller(
+        palette = "RdPu",
+        direction  =1,
+        breaks = scales::breaks_pretty(5L)
+    ) +
+  scale_y_reverse()+
+  scale_x_continuous(position="top")+
+  labs(
+    fill = "Intersection (%)"
+  )+
+  guides(fill = guide_legend(title.position = "top"))+
+    coord_cartesian(clip = "off")+
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_text(angle = 90, hjust=0, vjust=0.5),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank()
+  )
+intersect_3d_heatmap
+
+# save
+ggsave(
+  here::here("figures/infographic inkscape/intersect_3d_heatmap.svg"),
+  plot = intersect_3d_heatmap,
+  width = 2.5, height=9, units = "in"
+)
+ggsave(
+  here::here("figures/infographic inkscape/intersect_3d_heatmap.png"),
+  plot = intersect_3d_heatmap,
+  width = 2.5, height=9, units = "in", bg="transparent"
+)
+  
+
+## full upset with bar on right 
 upset3_ggp <- ComplexUpset::upset(
   oroTypeDf_wide2, 
   intersect=rev(set_cols),
