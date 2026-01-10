@@ -836,83 +836,128 @@ weighted_set_sizes$group <- rev(weighted_set_sizes$group)
 
 
 
-upset2_ggp <- ComplexUpset::upset(
-  oroTypeDf_wide2, 
-  intersect=rev(set_cols),
-  sort_sets=FALSE,
-  min_degree=2, max_degree =2,
-  base_annotations = list(
-    'Intersection ratio'=intersection_ratio(
-      # mode = "inclusive_intersection",
-      text_mapping=aes(label=!!upset_text_percentage()),
-      text = list(size=3, angle = 90, hjust = 0, vjust=0.5))+
-      theme(
-        panel.grid = element_blank(),
-        axis.text = element_blank(),
-        axis.title.y = element_blank()
-        )
-    
-    ),
-  set_sizes = (
-    upset_set_size(
-      # position="right",
-      geom =geom_col(
-          data = weighted_set_sizes,
-          aes(x = group, y = value, fill = as.factor(group)),
-          stat = "identity"
-        )
-      
-    )+
-      scale_fill_manual(values = rev(oroTypeAes$col), guide=FALSE)+
-                 theme(
-                   axis.text.x = element_text(angle=270),
-                   axis.text.y = element_blank(),
-                   legend.position = 'none',
-                   panel.grid = element_blank(),
-                   axis.title.x = element_text(angle = 180,
-                                               hjust=0,size=10)
-                   )+
-      geom_text(
-        data = weighted_set_sizes,
-        aes(x = group, y=value, label=scales::number(value, accuracy = 0.1)), hjust=0, size=5)
-  ),
-  expand_limits(y=70),
-  stripes = "transparent",
-  mode = "inclusive_intersection",
-  sort_intersections_by="ratio",
-  width_ratio = 0.4,
-  height_ratio = 5
-  )+
-  theme(
-    panel.grid = element_blank(),
-    axis.title.x = element_blank(),
-    axis.text.x = element_blank(),
-    axis.title.y = element_blank(),
-    # axis.text.y = element_text(angle = 180, hjust=0, size=10),
-    axis.text.y = element_blank(),
-    plot.background = element_blank()
+# upset2_ggp <- ComplexUpset::upset(
+#   oroTypeDf_wide2, 
+#   intersect=rev(set_cols),
+#   sort_sets=FALSE,
+#   min_degree=2, max_degree =2,
+#   base_annotations = list(
+#     'Intersection ratio'=intersection_ratio(
+#       # mode = "inclusive_intersection",
+#       text_mapping=aes(label=!!upset_text_percentage()),
+#       text = list(size=3, angle = 90, hjust = 0, vjust=0.5))+
+#       theme(
+#         panel.grid = element_blank(),
+#         axis.text = element_blank(),
+#         axis.title.y = element_blank()
+#         )
+#     
+#     ),
+#   set_sizes = (
+#     upset_set_size(
+#       # position="right",
+#       geom =geom_col(
+#           data = weighted_set_sizes,
+#           aes(x = group, y = value, fill = as.factor(group)),
+#           stat = "identity"
+#         )
+#       
+#     )+
+#       scale_fill_manual(values = rev(oroTypeAes$col), guide=FALSE)+
+#                  theme(
+#                    axis.text.x = element_text(angle=270),
+#                    axis.text.y = element_blank(),
+#                    legend.position = 'none',
+#                    panel.grid = element_blank(),
+#                    axis.title.x = element_text(angle = 180,
+#                                                hjust=0,size=10)
+#                    )+
+#       geom_text(
+#         data = weighted_set_sizes,
+#         aes(x = group, y=value, label=scales::number(value, accuracy = 0.1)), hjust=0, size=5)
+#   ),
+#   expand_limits(y=70),
+#   stripes = "transparent",
+#   mode = "inclusive_intersection",
+#   sort_intersections_by="ratio",
+#   width_ratio = 0.4,
+#   height_ratio = 5
+#   )+
+#   theme(
+#     panel.grid = element_blank(),
+#     axis.title.x = element_blank(),
+#     axis.text.x = element_blank(),
+#     axis.title.y = element_blank(),
+#     # axis.text.y = element_text(angle = 180, hjust=0, size=10),
+#     axis.text.y = element_blank(),
+#     plot.background = element_blank()
+#   )
+# 
+# upset2_ggp
+
+# Check percentages are right --- no they're not
+# So the percentages are only out of the 2nd order intersections
+oros <- levels(oro_df$oro_type)
+oro_interactions <- combn(oros, 2)
+oro_intersect_percentages <- data.frame(
+  oro1 = oro_interactions[1,],
+  oro2 = oro_interactions[2,],
+  n_union = rep(NA, length(ncol(oro_interactions))),
+  n_intersect = rep(NA, length(ncol(oro_interactions))),
+  n_percent = rep(NA, length(ncol(oro_interactions)))
+)
+for(c in 1:ncol(oro_interactions)){
+  oro_intersect_percentages$n_union[c] <- sum(oroTypeDf_wide2[oro_interactions[1,c]] |
+                       oroTypeDf_wide2[oro_interactions[2,c]])
+  oro_intersect_percentages$n_intersect[c] <- sum(oroTypeDf_wide2[oro_interactions[1,c]] &
+                       oroTypeDf_wide2[oro_interactions[2,c]])
+  oro_intersect_percentages$n_percent[c] <- oro_intersect/(oro_union)
+  
+}
+oro_intersect_percentages<- oro_intersect_percentages %>%
+  mutate(
+    n_percent = n_intersect/n_union*100,
+    oro1 = gsub("-","_", oro1),
+    oro2 = gsub("-","_", oro2),
   )
 
-upset2_ggp
+## plot as a matrix
+intesect_percent_matrix_ggp <- ggplot(
+  data = oro_intersect_percentages 
+)+
+  geom_tile(aes(x=oro1, y=oro2, fill = n_percent))+
+  theme(
+    axis.text.x = element_text(angle=45, hjust=1, vjust=1)
+  )
+intesect_percent_matrix_ggp
 
-
-## simple example
+ ## full upset with bar on right 
 upset3_ggp <- ComplexUpset::upset(
   oroTypeDf_wide2, 
   intersect=rev(set_cols),
   sort_sets=FALSE,
   min_degree=2, max_degree =2,
   base_annotations = list(
-    'Intersection ratio'=intersection_ratio(
-      text_mapping=aes(label=!!upset_text_percentage()),
-      text = list(size=3, angle = 90, hjust = 0, vjust=0.5))+
-      theme(
-        panel.grid = element_blank(),
-        axis.text = element_blank(),
-        axis.title.y = element_blank()
-        )
+    # 'Intersection ratio'=intersection_ratio(
+    #   text_mapping=aes(label=!!upset_text_percentage()),
+    #   text = list(size=3, angle = 90, hjust = 0, vjust=0.5))+
+    #   theme(
+    #     panel.grid = element_blank(),
+    #     axis.text = element_blank(),
+    #     axis.title.y = element_blank()
+    #     )
     
     ),
+  annotations = list(
+    'Intersection ratio'=list(
+      geom = list(
+        geom_col(
+          data = oro_intersect_percentages,
+          mapping = aes(x=)
+        )
+      )
+    )
+  ),
   set_sizes=(
         upset_set_size(
             geom=geom_col(
@@ -953,8 +998,10 @@ upset3_ggp <- ComplexUpset::upset(
     plot.background = element_blank()
   )
 
-# upset3_ggp
+upset3_ggp
 
+
+tmp_dat <- ggplot_build(upset3_ggp)
 
 
 ## Save as svg for inkscape
