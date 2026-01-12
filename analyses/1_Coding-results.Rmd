@@ -5697,6 +5697,191 @@ cm[["byClass"]][c("F1","Recall","Precision")]
 
 Rationale: are social outcomes (e.g. being able to stay fishing -- important to cultural identity) priotizied over economic costs?
 
+```{r glm of unweighted trade offs}
+# calculate outcomes
+oroOutcomes <- expand_labels_with_weight(df = studyResults, id_col = article_outcome_id, list_col = oro_type) %>%
+  left_join(studyResults %>% select(id, article_outcome_id,result_type, result_effect)) %>%
+  left_join(codedVars %>% select(id, evidence_type), by = "id") %>%
+  rename(
+    oro_type = label
+  ) %>%
+  mutate(
+    oro_type = factor(
+      oro_type,
+      levels = oroTypeAes$levels
+    ),
+    evidence_type = factor(
+      evidence_type,
+      levels=c("Quantitative metric","Social empirical","Qualitative - other")
+    )
+  )
+
+tradeOffs <- expand_labels_with_weight(df = oroOutcomes, id_col = article_outcome_id, list_col = result_type) %>%
+  left_join(oroOutcomes %>% select(article_outcome_id, id, oro_type, evidence_type, result_effect, weight) %>% rename(oro_weight = weight),
+            relationship = "many-to-many") %>%
+  rename(
+    result_type = label,
+    result_type_weight = weight
+  ) %>%
+  mutate(
+    weight = oro_weight*result_type_weight,
+    result_type = factor(
+      result_type,
+      levels = c("Management","Economic","Social","Ecological")
+    )
+  ) 
+  # group_by(
+  #   result_type, oro_type, result_effect
+  # ) %>%
+  # summarise(
+  #   weightedSum = sum(weight, na.rm = T)
+  # )
+
+resultTypes <- levels(tradeOffs$result_type)
+oros <- levels(tradeOffs$oro_type)
+resultTradeOffs_df_uw <- data.frame()
+for(r in 1:length(resultTypes)){
+  # for(o in 1:length(oros)){
+    
+  
+    posIds <- tradeOffs %>%
+      filter(result_type == resultTypes[r], #oro_type == oros[o], 
+             result_effect=="Positive")
+    posIds <- unique(posIds$id)
+    
+    dfTemp <- tradeOffs %>%
+      filter(id %in% posIds, 
+             result_type != resultTypes[r], #oro_type == oros[o], 
+             result_effect!="Neutral")
+    if(nrow(dfTemp) < 1){
+      next
+    }
+    dfTemp<- dfTemp%>%
+      mutate(
+        result_effect = factor(result_effect, levels = c("Positive","Negative"))
+      ) %>%
+      group_by(result_type, result_effect) %>%
+      summarise(
+        n = n()
+      )%>%
+      complete(result_effect, fill = list(weightedSum = NA)) %>%
+      pivot_wider(
+        names_from = result_effect,
+        values_from = n
+      ) %>%
+      mutate(
+        Negative = Negative*-1
+      )%>%
+      replace_na(list(Positive = 0, Negative = 0))%>%
+      mutate(
+        # oro_type = oros[o],
+        positive_result = resultTypes[r]
+      )
+    
+    resultTradeOffs_df_uw <- resultTradeOffs_df_uw %>%
+      bind_rows(dfTemp)
+    
+  # }
+}
+resultTradeOffs_df_uw$positive_result <- factor(
+  as.character(resultTradeOffs_df_uw$positive_result),
+  levels = levels(resultTradeOffs_df_uw$result_type)
+)
+
+
+## model the trade off
+tradeOff_int <- glm(cbind(Positive, abs(Negative))~ 1, data = resultTradeOffs_df_uw, family = "binomial")
+
+summary(tradeOff_int)
+# Coefficients:
+#             Estimate Std. Error z value Pr(>|z|)    
+# (Intercept)   1.2476     0.1516   8.229   <2e-16 ***
+# ---
+
+
+## By ORO type -------------
+
+oros <- levels(tradeOffs$oro_type)
+resultTradeOffs_df_uw_o <- data.frame()
+for(r in 1:length(resultTypes)){
+  for(o in 1:length(oros)){
+    
+  
+    posIds <- tradeOffs %>%
+      filter(result_type == resultTypes[r], oro_type == oros[o], 
+             result_effect=="Positive")
+    posIds <- unique(posIds$id)
+    
+    dfTemp <- tradeOffs %>%
+      filter(id %in% posIds, 
+             result_type != resultTypes[r], oro_type == oros[o], 
+             result_effect!="Neutral")
+    if(nrow(dfTemp) < 1){
+      next
+    }
+    dfTemp<- dfTemp%>%
+      mutate(
+        result_effect = factor(result_effect, levels = c("Positive","Negative"))
+      ) %>%
+      group_by(result_type, result_effect) %>%
+      summarise(
+        n = n()
+      )%>%
+      complete(result_effect, fill = list(weightedSum = NA)) %>%
+      pivot_wider(
+        names_from = result_effect,
+        values_from = n
+      ) %>%
+      mutate(
+        Negative = Negative*-1
+      )%>%
+      replace_na(list(Positive = 0, Negative = 0))%>%
+      mutate(
+        oro_type = oros[o],
+        positive_result = resultTypes[r]
+      )
+    
+    resultTradeOffs_df_uw_o <- resultTradeOffs_df_uw_o %>%
+      bind_rows(dfTemp)
+    
+  }
+}
+resultTradeOffs_df_uw_o$positive_result <- factor(
+  as.character(resultTradeOffs_df_uw$positive_result),
+  levels = levels(resultTradeOffs_df_uw$result_type)
+)
+
+# sample size
+sum(resultTradeOffs_df_uw_o$Positive)+sum(abs(resultTradeOffs_df_uw_o$Negative)) # 179
+sum(resultTradeOffs_df_uw_o$Positive) #142
+sum(abs(resultTradeOffs_df_uw_o$Negative)) #37
+
+# model the trade off
+tradeOff_int_o <- glm(cbind(Positive, abs(Negative))~ oro_type + 1, data = resultTradeOffs_df_uw_o, family = "binomial")
+
+summary(tradeOff_int_o)
+
+# ## Nothing significant except intercept
+# Coefficients:
+#                                         Estimate Std. Error z value Pr(>|z|)  
+# (Intercept)                               1.7918     0.7638   2.346    0.019 *
+# oro_typeDisaster response technologies   -0.4055     1.3540  -0.299    0.765  
+# oro_typeEconomic                         -0.8473     0.8842  -0.958    0.338  
+# oro_typeFisheries management             -0.3365     0.8715  -0.386    0.699  
+# oro_typeFishing technologies             15.7743  1978.0903   0.008    0.994  
+# oro_typeOcean governance                 -0.1823     0.8851  -0.206    0.837  
+# oro_typeSocio-behavioural                -1.0186     0.8397  -1.213    0.225  
+# oro_typeSoft infrastructure               0.4055     1.0672   0.380    0.704
+
+
+
+anova(tradeOff_int_o)
+#          Df Deviance Resid. Df Resid. Dev Pr(>Chi)
+# NULL                        53     40.033         
+# oro_type  7   7.5515        46     32.482   0.3738
+
+```
+
 
 ```{r barplot of trade offs}
 # calculate outcomes
@@ -5786,6 +5971,8 @@ resultTradeOffs_df$positive_result <- factor(
   as.character(resultTradeOffs_df$positive_result),
   levels = levels(resultTradeOffs_df$result_type)
 )
+
+
 
 tradeoff_ggp <- ggplot(resultTradeOffs_df, aes(x=result_type))+
   facet_wrap( ~ positive_result, nrow = 1)+
