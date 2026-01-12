@@ -2211,10 +2211,15 @@ spat_scale_leg
 # Plot
 spatial_scale_ggp <- ggplot(type_spatial_scale_joined_n %>%
                               mutate(text_color = ifelse(Value > 15,"white","black")), 
-                            aes(x=label, y=oro_type, fill = my_color))+
+                            aes(y=label, x=oro_type, fill = my_color))+
   geom_tile()+
   scale_fill_identity(guide=FALSE)+
   scale_color_identity(guide=FALSE)+
+  scale_y_discrete(
+    limits = rev(levels(type_spatial_scale_joined_n$label)[
+      levels(type_spatial_scale_joined_n$label) != "None"
+    ])
+  )+
   # scale_fill_distiller(palette = "Blues", direction=1)+
   geom_text(
     aes(label = scales::number(Value, accuracy = 0.1), color = text_color),
@@ -2222,14 +2227,14 @@ spatial_scale_ggp <- ggplot(type_spatial_scale_joined_n %>%
   )+
   coord_cartesian(clip="off")+
   labs(
-    x = "Spatial scale",
-    y = "Option type"
+    y = "Spatial scale",
+    x = "Option type"
   )+
   theme_bw(base_size = 12)+
   theme(
     axis.text.x = element_text(angle=45, hjust=1),
-    axis.line.x = element_line(arrow = grid::arrow(length = unit(0.3, "cm"), 
-                                                       ends = "last")),
+    axis.line.y = element_line(arrow = grid::arrow(length = unit(0.3, "cm"), 
+                                                       ends = "first", type = "closed")),
     axis.ticks.y = element_blank(),
     panel.grid = element_blank(),
     panel.border = element_blank(),
@@ -2319,7 +2324,7 @@ time_scale_ggp <- ggplot(
     labels = levels(type_time_scale_joined_n$label)
   )+
   scale_x_continuous(
-    expand = expansion(mult = c(0.5, 0.2))
+    expand = expansion(mult = c(0.85, 0.1))
   )+
   # label the time scale
   geom_text(
@@ -2331,7 +2336,7 @@ time_scale_ggp <- ggplot(
   geom_text(
     data = type_time_scale_joined_n %>% group_by(label) %>% arrange(oro_type)%>% slice(n()),
     aes(x = end, y=width_min+0.45, label = n_articles),
-    vjust=0.5, hjust=0, nudge_x=1, size=3, fontface = "italic",
+    vjust=0.5, hjust=0, nudge_x=1, size=4, fontface = "italic",
     check_overlap = TRUE
   )+
   scale_fill_manual(
@@ -2360,7 +2365,7 @@ time_scale_ggp <- ggplot(
 
 time_scale_ggp
 
-oro_legend <- ggpubr::get_legend(time_scale_ggp)
+
 
 
 
@@ -2402,78 +2407,146 @@ type_governance_joined <- reshape2::melt(type_governance_joined,
                     labels = c("N articles (weighted)", "Proportion"))
   )
 
-# WIth n articles and proportion
-governance_ggp <- ggplot(type_governance_joined, aes(x=label, y=Value, fill = oro_type))+
-  facet_wrap(vars(Metric), scales = "free_y", ncol=1)+
-  geom_col(position="stack")+
-  labs(
-    x = "Governance body",
-    y="Value",
-    fill = "Option type"
-  )+
-  scale_fill_manual(
-    values = oroTypeAes$col,
-    breaks = oroTypeAes$levels
-  )+
-  theme_bw(base_size = 12)+
-  theme(
-    axis.text.x = element_text(angle=45, hjust=1),
-    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
+
+
+# Just use number of articles not proportion
+type_governance_joined_n  <- type_governance_joined  %>%
+  filter(Metric == "N articles (weighted)") %>%
+  mutate(
+    label = forcats::fct_recode(label, "Private organizations/ companies" = "Private organizations/companies", "Community- based" = "Community-based"),
+    label = forcats::fct_relevel(label, c("Private organizations/ companies",
+                                          "Community- based","National government",
+                        "Regional (e.g. RFMOs)","International"
+                        )),
+  ) %>%
+  arrange(label, oro_type) %>%
+  group_by(label) %>%
+  mutate(
+    total = sum(Value),
+    
+    n_articles = cumsum(Value),
+    start = dplyr::lag(n_articles, default = 0),
+    end = n_articles,
+    
+    # center the bars
+    start = start - total / 2,
+    end   = end   - total / 2,
+    
+    label_numeric = as.numeric(label),
+    label_numeric = ifelse(grepl("Private", label), label_numeric-1, label_numeric),
+    width_min = as.numeric(label_numeric)-0.45,
+    width_max = as.numeric(label_numeric)+0.45
   )
 
 
-# Or just number
-governance_ggp <- ggplot(type_governance_joined %>%
-                              filter(Metric == "N articles (weighted)"), 
-                            aes(x=label, y=Value, fill = oro_type))+
-  geom_col(position="stack")+
+# Plot
+governance_ggp <- ggplot(
+  type_governance_joined_n
+)+
+  geom_rect(
+    data = type_governance_joined_n %>%
+      filter(!grepl("Private", label)),
+    aes(xmin = start, xmax = end, ymin = width_min, ymax = width_max, fill = oro_type))+
+  ggpattern::geom_rect_pattern(
+    data = type_governance_joined_n %>%
+      filter(grepl("Private", label)),
+    mapping = ggplot2::aes(
+      xmin = start, xmax = end, ymin = width_min, ymax = width_max, fill = oro_type
+    ),
+    pattern = "magick",
+    pattern_type = "crosshatch45",
+    pattern_fill = "black",
+    pattern_aspect_ratio = 1.5,
+    color = "black",
+    size = 0.1
+  )+
+  scale_y_continuous(
+    breaks = 1:length(levels(type_governance_joined_n$label)),
+    labels = levels(type_governance_joined_n$label),
+    expand = expansion(mult=c(0.2,0))
+  )+
+  scale_x_continuous(
+    expand = expansion(mult = c(0.7, 0.2))
+  )+
+   # label the governance scale
   geom_text(
-    data = type_governance_joined %>%
-      filter(Metric == "N articles (weighted)") %>%
-      group_by(label) %>%
-      summarise(
-        Value = sum(Value, na.rm = T)
-      ),
-    aes(x=label, y=Value, label = scales::number(Value)),
-    size = 3, vjust=0, inherit.aes=F
+    data = type_governance_joined_n %>% group_by(label) %>% arrange(oro_type)%>% slice(1),
+    aes(x = start, y=width_min+0.45, label = stringr::str_wrap(label, 15)),
+    vjust=0.5, hjust=1, nudge_x=-1, size=3.5, fontface = "bold",
+    check_overlap = TRUE
   )+
-  coord_cartesian(clip="off")+
-  labs(
-    x = "Governance body",
-    y="N articles (weighted)",
-    fill = "Option type"
+  # label the number of articles
+  geom_text(
+    data = type_governance_joined_n %>% group_by(label) %>% arrange(oro_type)%>% slice(n()),
+    aes(x = end, y=width_min+0.45, label = scales::number(n_articles, 0.1)),
+    vjust=0.5, hjust=0, nudge_x=1, size=4, fontface = "italic",
+    check_overlap = TRUE
   )+
   scale_fill_manual(
-    values = oroTypeAes$col,
-    breaks = oroTypeAes$levels
+    breaks = oroTypeAes$levels,
+    values = oroTypeAes$col
   )+
-  theme_bw(base_size = 12)+
+  guides(
+    fill=guide_legend(ncol=3, title.position = "top", title.hjust = 0.5,
+                      override.aes = list(pattern = "none")))+
+  labs(
+    y = "Scale of governing body",
+    x = "N articles (weighted)",
+    fill = "Option type"
+  )+
   theme(
-    axis.text.x = element_text(angle=45, hjust=1),
-    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    panel.background = element_blank(),
+    axis.line.y = element_line(arrow = grid::arrow(length = unit(0.3, "cm"), 
+                                                       ends = "last", type = "closed")),
+    legend.position = "bottom",
+    legend.margin = margin(r=-5, l=-5,t=0,b=0, unit = "pt"),
+    plot.margin = unit(rep(10,4), "pt")
   )
-
 
 governance_ggp
 
 
 
+## Combine space, time and governance panels ---------------
+
 
 require(patchwork)
+oro_legend <- ggpubr::get_legend(governance_ggp)
+oro_legend_ggp <- as_ggplot(oro_legend)
 
-# Combine using patchwork
+ 
 plotList = list(
-  spatial_scale_ggp+theme(legend.position = "none", plot.margin = unit(rep(0.2,4), units="cm")), 
-  time_scale_ggp+theme(legend.position = "none", plot.margin = unit(rep(0.2,4), units="cm")),
-  governance_ggp+theme(plot.margin = unit(rep(0.2,4), units = "cm"))
+  spatial_scale_ggp+
+    ggtitle("a.")+
+    theme(legend.position = "none", plot.margin = unit(rep(0.5,4), units="cm")), 
+  spat_scale_leg+theme(plot.margin = unit(rep(0.2,4), units="cm")),
+  time_scale_ggp+
+    ggtitle("b.")+
+    theme(legend.position = "none", 
+          axis.title.x = element_text(margin = margin(t=-100, unit="pt")),
+          plot.margin = unit(rep(0.5,4), units="cm")),
+  governance_ggp+
+    ggtitle("c.")+
+    theme(legend.position = "none", 
+          axis.title.x = element_text(margin = margin(t=-100, unit="pt")),
+          plot.margin = unit(rep(0.5,4), units = "cm")),
+  free(oro_legend_ggp+ theme(plot.margin = unit(c(0,0,2,0), units="cm")))
   )
-combined_patchwork <- wrap_plots(plotList, ncol = 3, guides = "collect") + 
-  plot_annotation(tag_levels = 'a') &
-  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) &
-  theme(legend.position = "bottom")
 
-ggsave(here::here("figures/supplemental/spatial_time_scale_governance_barplots.pdf"),
-       combined_patchwork, width = 9, height = 5)
+patch_layout <- "
+ACD
+BEE
+"
+
+
+combined_patchwork <- wrap_plots(plotList, design = patch_layout, heights = c(3, 1), widths = c(1,1.1,1.2)) 
+
+ggsave(here::here("figures/main/spatial_time_scale_governance_plots.pdf"),
+       combined_patchwork, width = 11, height = 6.5)
 
 
 
