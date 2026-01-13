@@ -5737,21 +5737,53 @@ tradeOffs <- expand_labels_with_weight(df = oroOutcomes, id_col = article_outcom
   #   weightedSum = sum(weight, na.rm = T)
   # )
 
+
+## Model Adaptive vs maladaptive by individual id -------------------------
+resultTradeOffs_id_df_uw <- tradeOffs %>%
+  group_by(id) %>%
+  summarise(
+    n_positive = sum(result_effect == "Positive"),
+    n_negative = sum(result_effect == "Negative")
+  )
+
+# show N
+sum(resultTradeOffs_id_df_uw$n_positive) + sum(resultTradeOffs_id_df_uw$n_negative)
+# 301
+
+# model
+tradeOff_int_id <- glm(cbind(n_positive, n_negative)~ 1, data = resultTradeOffs_id_df_uw, family = "binomial")
+
+summary(tradeOff_int_id)
+
+# Coefficients:
+#             Estimate Std. Error z value Pr(>|z|)    
+# (Intercept)   0.6683     0.1218   5.488 4.06e-08 ***
+
+print(paste("Having an adaptive outcome is", 
+            scales::number(exp(coef(tradeOff_int_id)[1]), 0.01),
+            "times more likely than maladaptive"))
+# "Having an adaptive outcome is 1.95 times more likely than maladaptive"
+
+
+
+## Model by result type -----------------------------
+ids <- unique(tradeOffs$id)
 resultTypes <- levels(tradeOffs$result_type)
 oros <- levels(tradeOffs$oro_type)
 resultTradeOffs_df_uw <- data.frame()
-for(r in 1:length(resultTypes)){
-  # for(o in 1:length(oros)){
-    
-  
+for(i in 1:length(ids)){
+  for(r in 1:length(resultTypes)){
+
     posIds <- tradeOffs %>%
       filter(result_type == resultTypes[r], #oro_type == oros[o], 
+             id == ids[i],
              result_effect=="Positive")
     posIds <- unique(posIds$id)
     
     dfTemp <- tradeOffs %>%
       filter(id %in% posIds, 
              result_type != resultTypes[r], #oro_type == oros[o], 
+             id == ids[i],
              result_effect!="Neutral")
     if(nrow(dfTemp) < 1){
       next
@@ -5764,7 +5796,7 @@ for(r in 1:length(resultTypes)){
       summarise(
         n = n()
       )%>%
-      complete(result_effect, fill = list(weightedSum = NA)) %>%
+      complete(result_effect, fill = list(n = NA)) %>%
       pivot_wider(
         names_from = result_effect,
         values_from = n
@@ -5775,6 +5807,7 @@ for(r in 1:length(resultTypes)){
       replace_na(list(Positive = 0, Negative = 0))%>%
       mutate(
         # oro_type = oros[o],
+        id = ids[i],
         positive_result = resultTypes[r]
       )
     
@@ -5783,38 +5816,65 @@ for(r in 1:length(resultTypes)){
     
   # }
 }
+}
 resultTradeOffs_df_uw$positive_result <- factor(
   as.character(resultTradeOffs_df_uw$positive_result),
   levels = levels(resultTradeOffs_df_uw$result_type)
 )
 
+# Calculate N
+sum(resultTradeOffs_df_uw$Positive)+sum(abs(resultTradeOffs_df_uw$Negative)) # 256
 
 ## model the trade off
-tradeOff_int <- glm(cbind(Positive, abs(Negative))~ 1, data = resultTradeOffs_df_uw, family = "binomial")
+tradeOff_int <- glm(cbind(Positive, abs(Negative))~ positive_result, data = resultTradeOffs_df_uw, family = "binomial")
 
 summary(tradeOff_int)
 # Coefficients:
-#             Estimate Std. Error z value Pr(>|z|)    
-# (Intercept)   1.2476     0.1516   8.229   <2e-16 ***
-# ---
+#                           Estimate Std. Error z value Pr(>|z|)  
+# (Intercept)                 1.2993     0.6513   1.995   0.0461 *
+# positive_resultEconomic    -0.2007     0.6911  -0.290   0.7715  
+# positive_resultSocial      -0.4810     0.6872  -0.700   0.4840  
+# positive_resultEcological   1.3157     0.8843   1.488   0.1368 
 
+
+# Test if the outcome dimension is significant -- yes
+drop1(tradeOff_int, test="Chisq")
+#                 Df Deviance    AIC    LRT Pr(>Chi)   
+# <none>               161.51 205.16                   
+# positive_result  3   173.00 210.65 11.486 0.009367 **
+
+print(paste("Having a synergy is", 
+            scales::number(exp(coef(tradeOff_int)[1]), 0.01),
+            "times more likely than trade-off"))
+# [1] "Having a synergy is 3.67 times more likely than trade-off"
+
+## and all the coefficients
+exp(coef(tradeOff_int))
+
+#               (Intercept)   positive_resultEconomic     positive_resultSocial 
+#                 3.6666667                 0.8181818                 0.6181818 
+# positive_resultEcological 
+#                 3.7272727
 
 ## By ORO type -------------
-
+ids <- unique(tradeOffs$id)
 oros <- levels(tradeOffs$oro_type)
 resultTradeOffs_df_uw_o <- data.frame()
+for(i in 1:length(ids)){
+  
 for(r in 1:length(resultTypes)){
   for(o in 1:length(oros)){
     
   
     posIds <- tradeOffs %>%
-      filter(result_type == resultTypes[r], oro_type == oros[o], 
+      filter(result_type == resultTypes[r], oro_type == oros[o], id == ids[i],
              result_effect=="Positive")
     posIds <- unique(posIds$id)
     
     dfTemp <- tradeOffs %>%
       filter(id %in% posIds, 
              result_type != resultTypes[r], oro_type == oros[o], 
+             id == ids[i],
              result_effect!="Neutral")
     if(nrow(dfTemp) < 1){
       next
@@ -5827,7 +5887,7 @@ for(r in 1:length(resultTypes)){
       summarise(
         n = n()
       )%>%
-      complete(result_effect, fill = list(weightedSum = NA)) %>%
+      complete(result_effect, fill = list(n = NA)) %>%
       pivot_wider(
         names_from = result_effect,
         values_from = n
@@ -5837,6 +5897,7 @@ for(r in 1:length(resultTypes)){
       )%>%
       replace_na(list(Positive = 0, Negative = 0))%>%
       mutate(
+        id = ids[i],
         oro_type = oros[o],
         positive_result = resultTypes[r]
       )
@@ -5846,6 +5907,7 @@ for(r in 1:length(resultTypes)){
     
   }
 }
+} # end ids
 resultTradeOffs_df_uw_o$positive_result <- factor(
   as.character(resultTradeOffs_df_uw$positive_result),
   levels = levels(resultTradeOffs_df_uw$result_type)
@@ -5857,28 +5919,32 @@ sum(resultTradeOffs_df_uw_o$Positive) #142
 sum(abs(resultTradeOffs_df_uw_o$Negative)) #37
 
 # model the trade off
-tradeOff_int_o <- glm(cbind(Positive, abs(Negative))~ oro_type + 1, data = resultTradeOffs_df_uw_o, family = "binomial")
+tradeOff_int_o <- glm(cbind(Positive, abs(Negative))~ positive_result + oro_type + 1, data = resultTradeOffs_df_uw_o, family = "binomial")
 
 summary(tradeOff_int_o)
 
-# ## Nothing significant except intercept
+## Nothing significant except intercept and outcome dimension
 # Coefficients:
-#                                         Estimate Std. Error z value Pr(>|z|)  
-# (Intercept)                               1.7918     0.7638   2.346    0.019 *
-# oro_typeDisaster response technologies   -0.4055     1.3540  -0.299    0.765  
-# oro_typeEconomic                         -0.8473     0.8842  -0.958    0.338  
-# oro_typeFisheries management             -0.3365     0.8715  -0.386    0.699  
-# oro_typeFishing technologies             15.7743  1978.0903   0.008    0.994  
-# oro_typeOcean governance                 -0.1823     0.8851  -0.206    0.837  
-# oro_typeSocio-behavioural                -1.0186     0.8397  -1.213    0.225  
-# oro_typeSoft infrastructure               0.4055     1.0672   0.380    0.704
+#                                         Estimate Std. Error z value Pr(>|z|)   
+# (Intercept)                               3.1963     1.0523   3.037  0.00239 **
+# positive_resultEconomic                  -1.5766     0.8083  -1.951  0.05111 . 
+# positive_resultManagement                -1.3221     1.0936  -1.209  0.22668   
+# positive_resultSocial                    -1.6524     0.7819  -2.113  0.03457 * 
+# oro_typeDisaster response technologies   -0.3867     1.3767  -0.281  0.77881   
+# oro_typeEconomic                         -0.7412     0.8970  -0.826  0.40866   
+# oro_typeFisheries management             -0.4641     0.8978  -0.517  0.60523   
+# oro_typeFishing technologies             14.7142  1164.8606   0.013  0.98992   
+# oro_typeOcean governance                 -0.2724     0.9005  -0.303  0.76226   
+# oro_typeSocio-behavioural                -0.9225     0.8505  -1.085  0.27804   
+# oro_typeSoft infrastructure               0.3207     1.0806   0.297  0.76663 
 
 
 
-anova(tradeOff_int_o)
-#          Df Deviance Resid. Df Resid. Dev Pr(>Chi)
-# NULL                        53     40.033         
-# oro_type  7   7.5515        46     32.482   0.3738
+drop1(tradeOff_int_o, test = "Chisq")
+#                 Df Deviance    AIC    LRT Pr(>Chi)  
+# <none>               116.05 161.83                  
+# positive_result  3   122.56 162.33 6.5043  0.08949 .
+# oro_type         7   121.70 153.48 5.6495  0.58122
 
 ```
 
