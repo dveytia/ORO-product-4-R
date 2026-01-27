@@ -70,7 +70,10 @@ oroTypeAes <- data.frame(
   "#ff7f0e",  # Built infrastructure
   "#fcb87c"   # Nature-based
   )
-)
+)%>%
+  mutate(
+    branch = factor(branch, levels = c("Socio-institutional","Technology","Infrastructure"))
+  )
 
 studyMethodAes <- data.frame(
   levels = c(
@@ -98,7 +101,8 @@ studyMethodAes <- data.frame(
   "#ff7f0e",  # Doc
   "#fcb87c"   # Num
 )
-)
+) 
+
 
 cidAes <- data.frame(
   levels = c(
@@ -2140,7 +2144,8 @@ type_spatial_scale_joined_n <- type_spatial_scale_joined%>%
                               filter(Metric == "N articles (weighted)") %>%
   mutate(
     Value_cut = cut(Value, 
-                     breaks = pretty(type_spatial_scale_joined_n$Value,n = 8)))
+                     breaks = pretty(type_spatial_scale_joined$Value,n = 8)),
+    label = droplevels(label))
 
 # Specific per-oro col pal
 oros <- levels(type_spatial_scale_joined_n$oro_type)
@@ -2208,7 +2213,7 @@ spat_scale_leg <- ggplot(col_lookup %>%
   )
 spat_scale_leg
 
-# Plot
+# Plot with unique color scale
 spatial_scale_ggp <- ggplot(type_spatial_scale_joined_n %>%
                               mutate(text_color = ifelse(Value > 15,"white","black")), 
                             aes(y=label, x=oro_type, fill = my_color))+
@@ -2244,6 +2249,107 @@ spatial_scale_ggp <- ggplot(type_spatial_scale_joined_n %>%
 
 spatial_scale_ggp
 
+
+# Plot with normal color scale
+
+# get branch colors for rectangles
+branch_cols <- oroTypeAes %>%
+  arrange(branch) %>%
+  group_by(branch) %>%
+  slice(1) %>%
+  pull(col)
+
+
+spatial_scale_ggp <- ggplot(type_spatial_scale_joined_n %>%
+                              mutate(text_color = ifelse(Value > 15,"white","black")), 
+                            aes(y=label, x=oro_type, fill = Value))+
+  geom_tile()+
+  geom_vline(
+    data = data.frame(
+      x = c(4.5,6.5)
+    ),
+    aes(xintercept = x), col="black", linewidth = 1
+  )+
+  scale_y_discrete(limits = rev(levels(type_spatial_scale_joined_n$label)))+
+  scale_color_identity(guide="none")+
+  scale_fill_distiller(palette = "Blues", direction=1, name = "N articles\n(weighted)")+
+  geom_text(
+    aes(label = scales::number(Value, accuracy = 0.1), color = text_color),
+    size = 3
+  )+
+  ggnewscale::new_scale_fill()+
+  geom_rect(
+    data = data.frame(
+      xmin = c(0.5,4.5,6.5),
+      xmax = c(4.5,6.5,8.5),
+      ymin = rep(4.75, 3),
+      ymax = rep(5.5,3),
+      fill = c(branch_cols)
+    ),
+    aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax, fill=fill), inherit.aes=FALSE
+  )+
+  geom_text(
+    data = data.frame(
+      x =c(2.5,5.5,7.5),
+      y= rep(5, 3),
+      label = levels(oroTypeAes$branch)
+    ),
+    aes(x=x, y=y, label=label), color = "white", size=3, hjust=0.5, vjust=0, inherit.aes=FALSE
+  )+
+  scale_fill_identity()+
+  coord_cartesian(clip="off")+
+  labs(
+    y = "Spatial scale",
+    x = "Option type"
+  )+
+  theme_bw(base_size = 12)+
+  theme(
+    legend.position = "bottom",
+    axis.text.x = element_text(angle=45, hjust=1),
+    axis.line.y = element_line(arrow = grid::arrow(length = unit(0.3, "cm"), 
+                                                       ends = "first", type = "closed")),
+    axis.ticks.y = element_blank(),
+    panel.grid = element_blank(),
+    panel.border = element_blank(),
+    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
+  )
+
+
+spatial_scale_ggp
+
+
+## Alternate panel bar plot spatial scale
+spatial_scale_bar_ggp <- ggplot(type_spatial_scale_joined_n, 
+                            aes(x=label, y=Value, fill = oro_type))+
+  geom_col(position="stack")+
+  geom_text(
+    data = type_spatial_scale_joined %>%
+      filter(Metric == "N articles (weighted)") %>%
+      group_by(label) %>%
+      summarise(
+        Value = sum(Value, na.rm = T)
+      ),
+    aes(x=label, y=Value, label = scales::number(Value)),
+    size = 3, vjust=0, inherit.aes=F
+  )+
+  coord_cartesian(clip="off")+
+  labs(
+    x = "Spatial scale",
+    y="N articles (weighted)",
+    fill = "Option type"
+  )+
+  scale_fill_manual(
+    values = oroTypeAes$col,
+    breaks = oroTypeAes$levels
+  )+
+  theme_bw(base_size = 12)+
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle=45, hjust=1),
+    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
+  )
+
+spatial_scale_bar_ggp
 
 
 
@@ -2294,7 +2400,7 @@ type_time_scale_joined_n <- type_time_scale_joined %>%
     end = cumsum(Value)+adj_value,
     n_articles = cumsum(Value),
     label_numeric = as.numeric(label),
-    label_numeric = ifelse(label == "None", label_numeric-1, label_numeric),
+    label_numeric = ifelse(label == "None", label_numeric, label_numeric),
     width_min = as.numeric(label_numeric)-0.45,
     width_max = as.numeric(label_numeric)+0.45
   )
@@ -2518,35 +2624,36 @@ require(patchwork)
 oro_legend <- ggpubr::get_legend(governance_ggp)
 oro_legend_ggp <- as_ggplot(oro_legend)
 
+patch_layout <- "
+ABC
+ADD
+"
  
 plotList = list(
-  spatial_scale_ggp+
+  free(spatial_scale_ggp+
     ggtitle("a.")+
-    theme(legend.position = "none", plot.margin = unit(rep(0.5,4), units="cm")), 
-  spat_scale_leg+theme(plot.margin = unit(rep(0.2,4), units="cm")),
+    theme(plot.margin = unit(rep(0.5,4), units="cm"))), 
+  # spat_scale_leg+theme(plot.margin = unit(rep(0.2,4), units="cm")),
   time_scale_ggp+
     ggtitle("b.")+
     theme(legend.position = "none", 
-          axis.title.x = element_text(margin = margin(t=-100, unit="pt")),
+          # axis.title.x = element_text(margin = margin(t=-100, unit="pt")),
           plot.margin = unit(rep(0.5,4), units="cm")),
   governance_ggp+
     ggtitle("c.")+
     theme(legend.position = "none", 
-          axis.title.x = element_text(margin = margin(t=-100, unit="pt")),
+          # axis.title.x = element_text(margin = margin(t=-100, unit="pt")),
           plot.margin = unit(rep(0.5,4), units = "cm")),
   free(oro_legend_ggp+ theme(plot.margin = unit(c(0,0,2,0), units="cm")))
   )
 
-patch_layout <- "
-ACD
-BEE
-"
 
 
-combined_patchwork <- wrap_plots(plotList, design = patch_layout, heights = c(3, 1), widths = c(1,1.1,1.2)) 
+
+combined_patchwork <- wrap_plots(plotList, design = patch_layout, heights = c(3, 1), widths = c(1.2,1,1)) 
 
 ggsave(here::here("figures/main/spatial_time_scale_governance_plots.pdf"),
-       combined_patchwork, width = 11, height = 6.5)
+       combined_patchwork, width = 12, height = 6.5)
 
 
 
@@ -3402,7 +3509,7 @@ dashboard_df <- dashboard_df %>%
     n = sum(n, na.rm = T),
     n_weighted = sum(n_weighted, na.rm=T)
   ) %>%
-  arrange(factor_name, prop_weighted_factor_sum) %>%
+  arrange(factor_name, prop_weighted_factor_sum) %>% # rank by proportion of articles
   group_by(factor_name)%>%
   mutate(
     axis_rank = row_number(),
@@ -3444,6 +3551,15 @@ scale_cor_test
 # sample estimates:
 #       tau 
 # 0.2142857  
+
+## grid lines
+# Format for ggplot
+
+allAxisColsLabs <- c("Scale of governing body","Rule of law","Spatial scale of implementation","Time since implementation")
+
+ymn <- floor(min(dashboard_df$axis_rank))
+ymx <- ceiling(max(dashboard_df$axis_rank, na.rm=T))
+grid_lines <- pretty(c(ymn, ymx),n = 3)
 
 
 ## bar plot facetted by dimension -------------
@@ -3492,7 +3608,8 @@ oro_context_bar_switch_ggp <- ggplot(dashboard_df, aes(x = category, y = axis_ra
   facet_wrap(vars(oro_type), labeller = label_wrap_gen(width=30),
              ncol=2)+
   geom_col(width = 1, color = "white", position = position_identity()) +
-  geom_text(aes(label = scales::number(n_weighted, accuracy = 0.1)), vjust=0, size=3)+
+  # geom_text(aes(label = scales::number(n_weighted, accuracy = 0.1)), vjust=0, size=3)+ # label weighted articles
+  geom_text(aes(label = round(n)), vjust=0, size=3)+ # label total N articles
   scale_y_continuous(
     name = "Ranking",
     breaks = grid_lines,
@@ -3597,6 +3714,7 @@ ggsave(
 
 
 ## Write dashboard plots for each dimension category seperately and save as svg -----------
+savePlot = FALSE
 categories <- levels(dashboard_df$category)
 plot_icons <- c(
   "governance_icon.svg","law_icon.svg","spatial_icon.svg","time_icon.svg"
@@ -3667,13 +3785,16 @@ for(i in 1:length(categories)){
     
     if(i==1){
       tmp_leg <- ggpubr::get_legend(tmp_plot)
-      ggsave(
-        filename = here::here(
-          "figures/main/dashboard_plot_oro_ranking_svg_plots/oro_fill_legend.svg"
-        ),
-        plot = tmp_leg,
-        width=4, height=1.5
-      )
+      if(savePlot){
+        ggsave(
+          filename = here::here(
+            "figures/main/dashboard_plot_oro_ranking_svg_plots/oro_fill_legend.svg"
+          ),
+          plot = tmp_leg,
+          width=4, height=1.5
+        )
+      }
+      
     }
     
     oro_context_dashboard_ggp_list[[i]] <- tmp_plot_icon
