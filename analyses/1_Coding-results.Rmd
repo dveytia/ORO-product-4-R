@@ -136,6 +136,10 @@ cidAes <- data.frame(
 )
 
 
+## Axis labels
+oroTypeTitle <- "Adaptation intervention"
+nArticlesTitle <- "Instances (N)"
+nArticlesMetric <- "n_articles" # use n_articles or weightedSum?
 
 
 ```
@@ -475,7 +479,7 @@ f1scores_ggp <- ggplot(data=f1Scores, aes(`F1 label`))+
   geom_density()+
   geom_vline(xintercept = mean(f1Scores$`F1 label`), col="red")+
   geom_text(
-    aes(label=scales::number(mean(f1Scores$`F1 label`), accuracy=0.01), x=mean(f1Scores$`F1 label`)), hjust=1,y=0.5, check_overlap = TRUE
+    aes(label=scales::number(mean(f1Scores$`F1 label`), accuracy=0.01), x=mean(f1Scores$`F1 label`)), hjust=1,y=0.5, check_overlap = TRUE,
     col="red"
   )+
   geom_rect(
@@ -512,7 +516,7 @@ n_oro_per_paper_ggp <- oro_df %>%
   ggplot(aes(x=n))+
   geom_histogram(binwidth = 0.5)+
   labs(
-    x = "N Options/article",
+    x = paste0("N ",oroTypeTitle,"s per article"),
     y = "N articles"
   )+
   scale_x_continuous(breaks = 1:6)+
@@ -558,8 +562,8 @@ oro_count_ggp <- oro_df %>%
     guide="none"
   )+
   labs(
-    x = "Option type",
-    y="N articles"
+    x = oroTypeTitle,
+    y= nArticlesTitle
   )+
   theme_minimal(base_size = 12)+
   theme(
@@ -593,8 +597,8 @@ oro_ggp <- oro_df %>%
     guide="none"
   )+
   labs(
-    x = "Option type",
-    y="N articles (weighted)"
+    x = oroTypeTitle,
+    y="Weighted articles (N)"
   )+
   theme_minimal(base_size = 12)+
   theme(
@@ -918,7 +922,7 @@ for(c in 1:nrow(oro_interactions)){
                        oroTypeDf_wide2[oro_interactions[c,2]])
   oro_intersect_percentages$n_intersect[c] <- sum(oroTypeDf_wide2[oro_interactions[c,1]] &
                        oroTypeDf_wide2[oro_interactions[c,2]])
-  oro_intersect_percentages$n_percent[c] <- oro_intersect/(oro_union)
+  oro_intersect_percentages$n_percent[c] <- oro_intersect_percentages$n_intersect[c]/(oro_intersect_percentages$n_union[c])
   
 }
 # Set lower triangle to na
@@ -928,101 +932,111 @@ oro_intersect_percentages<- oro_intersect_percentages %>%
   ) %>%
   mutate(
     n_percent_na = ifelse(as.numeric(oro2) <= as.numeric(oro1), NA, n_percent)
-  )
+  )%>% 
+    filter(!is.na(n_percent_na)) %>%
+    mutate(oro1 = droplevels(oro1)) 
 
 
-# Make my own fill colors
-cut_breaks <- pretty(oro_intersect_percentages$n_percent_na, n = 5)
-oro_intersect_percentages$n_percent_na_cut <- cut(
-  oro_intersect_percentages$n_percent_na, cut_breaks
-)
-oros <- levels(oro_intersect_percentages$oro1)
-cut_breaks_levels <- levels(oro_intersect_percentages$n_percent_na_cut)
-n_cuts <- length(cut_breaks_levels)
-
-col_lookup_1 <- data.frame(
-  oro_type = rep(oroTypeAes$levels, n_cuts) %>% sort(),
-  n_percent_na_cut = rep(cut_breaks_levels, length(oros)),
-  my_color = rep(NA, n_cuts*length(oros))
-) %>%
-  mutate(oro1 = factor(oro_type, levels = oroTypeAes$levels),
-         n_percent_na_cut = factor(n_percent_na_cut, levels = cut_breaks_levels)) %>%
-  arrange(oro1, n_percent_na_cut) %>%
-  left_join(oroTypeAes %>% select(levels, branch),
-            by = c("oro1"="levels"))
-
-require(scales)
-require(colorspace)
-for(o in 1:length(oros)){
-  ind <- which(col_lookup_1$oro_type == oros[o])
-  ind <- ind[order(col_lookup_1$n_percent_na_cut[ind])]
-  oro_branch <- oroTypeAes$branch[oroTypeAes$levels == oros[o]]
-  branch_cols <- oroTypeAes$col[oroTypeAes$branch == oro_branch]
-  start_col <- lighten(branch_cols[2], amount = 0.8)
-  end_col <- darken(branch_cols[1], amount=0.2)
-  scales::show_col(c(start_col, end_col))
-  
-  col_lookup_1$my_color[ind] <- pal_seq_gradient(start_col, end_col)(seq(from=0,to=1, length.out = length(ind)))
-}  
-
-# Match color scale to the value
-oro_intersect_percentages <- oro_intersect_percentages %>%
-  left_join(col_lookup_1, by = c("oro1","n_percent_na_cut"))
-
-# make legend
-interaction_mat_leg <- ggplot(col_lookup_1 %>%
-                           distinct(branch, n_percent_na_cut, my_color) %>%
-                           mutate(branch = factor(branch, 
-                                                  levels = c(
-                                                    "Socio-institutional",
-                                                    "Technology",
-                                                    "Infrastructure"
-                                                  ))),
-                         aes(x=n_percent_na_cut, y=branch, fill = my_color))+
-  geom_tile()+
-  scale_fill_identity()+
-  geom_text(
-    data= data.frame(
-      x = seq(0.5, length.out = n_cuts+1, by=1),
-      labels = pretty(type_spatial_scale_joined_n$Value,n = 8)
-    ),
-    aes(x=x, label = labels), y=0, inherit.aes = FALSE
-  )+
-  labs(
-    title = "Intersection (%)",
-    y=""
-  )+
-  coord_fixed(clip = "off")+
-  theme_minimal(base_size = 10)+
-  theme(
-    axis.text.x = element_blank(),
-    axis.title.x = element_blank(),
-    axis.ticks = element_blank()
-  )
-interaction_mat_leg
-
+# # Make my own fill colors -- too complicated
+# cut_breaks <- pretty(oro_intersect_percentages$n_percent_na, n = 5)
+# oro_intersect_percentages$n_percent_na_cut <- cut(
+#   oro_intersect_percentages$n_percent_na, cut_breaks
+# )
+# oros <- levels(oro_intersect_percentages$oro1)
+# cut_breaks_levels <- levels(oro_intersect_percentages$n_percent_na_cut)
+# n_cuts <- length(cut_breaks_levels)
+# 
+# col_lookup_1 <- data.frame(
+#   oro_type = rep(oroTypeAes$levels, n_cuts) %>% sort(),
+#   n_percent_na_cut = rep(cut_breaks_levels, length(oros)),
+#   my_color = rep(NA, n_cuts*length(oros))
+# ) %>%
+#   mutate(oro1 = factor(oro_type, levels = oroTypeAes$levels),
+#          n_percent_na_cut = factor(n_percent_na_cut, levels = cut_breaks_levels)) %>%
+#   arrange(oro1, n_percent_na_cut) %>%
+#   left_join(oroTypeAes %>% select(levels, branch),
+#             by = c("oro1"="levels"))
+# 
+# require(scales)
+# require(colorspace)
+# for(o in 1:length(oros)){
+#   ind <- which(col_lookup_1$oro_type == oros[o])
+#   ind <- ind[order(col_lookup_1$n_percent_na_cut[ind])]
+#   oro_branch <- oroTypeAes$branch[oroTypeAes$levels == oros[o]]
+#   branch_cols <- oroTypeAes$col[oroTypeAes$branch == oro_branch]
+#   start_col <- lighten(branch_cols[2], amount = 0.8)
+#   end_col <- darken(branch_cols[1], amount=0.2)
+#   scales::show_col(c(start_col, end_col))
+#   
+#   col_lookup_1$my_color[ind] <- pal_seq_gradient(start_col, end_col)(seq(from=0,to=1, length.out = length(ind)))
+# }  
+# 
+# # Match color scale to the value
+# oro_intersect_percentages <- oro_intersect_percentages %>%
+#   left_join(col_lookup_1, by = c("oro1","n_percent_na_cut"))
+# 
+# # make legend
+# interaction_mat_leg <- ggplot(col_lookup_1 %>%
+#                            distinct(branch, n_percent_na_cut, my_color) %>%
+#                            mutate(branch = factor(branch, 
+#                                                   levels = c(
+#                                                     "Socio-institutional",
+#                                                     "Technology",
+#                                                     "Infrastructure"
+#                                                   ))),
+#                          aes(x=n_percent_na_cut, y=branch, fill = my_color))+
+#   geom_tile()+
+#   scale_fill_identity()+
+#   geom_text(
+#     data= data.frame(
+#       x = seq(0.5, length.out = n_cuts+1, by=1),
+#       labels = pretty(type_spatial_scale_joined_n$Value,n = 8)
+#     ),
+#     aes(x=x, label = labels), y=0, inherit.aes = FALSE
+#   )+
+#   labs(
+#     title = "Intersection (%)",
+#     y=""
+#   )+
+#   coord_fixed(clip = "off")+
+#   theme_minimal(base_size = 10)+
+#   theme(
+#     axis.text.x = element_blank(),
+#     axis.title.x = element_blank(),
+#     axis.ticks = element_blank()
+#   )
+# interaction_mat_leg
+# 
 
 ## plot intersections as a matrix with geom_point -------------------
+sizeBreaks <- round(quantile(oro_intersect_percentages$n_percent_na, na.rm=T, probs = c(0, 0.5,1)) / 5) * 5
+names(sizeBreaks) <- NULL
+pretty(sizeBreaks,n=2)
+
 intersect_percent_matrix_ggp <- ggplot(
   data = oro_intersect_percentages 
 )+
   geom_point(aes(x=oro1, y=oro2, 
-                 fill =my_color,
-                 # fill = n_percent_na, 
+                 fill = oro1,
                  size=n_percent_na), shape = 21)+
   geom_text(
     data = oro_intersect_percentages %>%
       filter(25 <= n_percent_na),
     aes(x=oro1, y=oro2, label = scales::number(n_percent_na, accuracy = 1)),
-    color = "white",size=3
+    color = "black",size=3
   )+
-  scale_size_continuous(range = c(2,10))+
-  scale_fill_identity()+
-  scale_x_discrete(limits = levels(oro_intersect_percentages$oro2), position = "top")+
-  scale_y_discrete(limits = oroTypeAes$levels%>% rev())+
-  guides(size = "none", fill = "none")+
+  scale_size_binned(breaks = sizeBreaks,
+                    range = c(2,10)) +
+  # scale_size_continuous(range = c(2,10))+
+  scale_fill_manual(
+    breaks = levels(oro_intersect_percentages$oro1),
+    values = oroTypeAes$col[match(oroTypeAes$levels, levels(oro_intersect_percentages$oro1))]
+  )+
+  scale_x_discrete(limits = levels(oro_intersect_percentages$oro1), position = "top")+
+  scale_y_discrete(limits = levels(oro_intersect_percentages$oro2)%>% rev())+
+  guides(fill = "none")+ #size = "none", 
   labs(
-    x="", y = ""
+    x="", y = "", size = "Jaccard similarity (%)"
   )+
   theme_minimal(base_size = 12)+
   theme(
@@ -1030,28 +1044,28 @@ intersect_percent_matrix_ggp <- ggplot(
     plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
     panel.grid.major = element_blank(), #remove major gridlines
     panel.grid.minor = element_blank(), #remove minor gridlines
-    legend.background = element_rect(fill='transparent'), #transparent legend bg
-    legend.box.background = element_rect(fill='transparent'), #transparent legend panel
-    axis.text.x = element_text(angle=90, hjust=0, vjust=0.5)
+    legend.background = element_rect(fill='transparent', color = "transparent"), #transparent legend bg
+    legend.box.background = element_rect(fill='transparent', color = "transparent"), #transparent legend panel
+    axis.text.x = element_text(angle=90, hjust=0, vjust=0, size=14),
+    axis.text.y = element_blank(),
+    legend.position = "bottom",
+    legend.title.position = "top",
+    legend.title = element_text(size = 10, hjust=0.5),
+    legend.text = element_text(size=8)
   )
 intersect_percent_matrix_ggp
 
 
 ## Save 
-interaction_patch <- wrap_plots(
-  list(intersect_percent_matrix_ggp + theme(axis.text.y = element_blank()), 
-       interaction_mat_leg+theme(axis.text.x = element_blank(), plot.title = element_text(margin = margin(b=5)))
-       ),
-  ncol = 1, heights = c(1, 0.15)
-)
+
 ggsave(
   here::here("figures/infographic inkscape/intersect_dot_plot.svg"),
-  plot = interaction_patch,
-  width = 4, height=9, units = "in"
+  plot = intersect_percent_matrix_ggp,
+  width = 2.5, height=9, units = "in"
 )
 ggsave(
   here::here("figures/infographic inkscape/intersect_dot_plot.png"),
-  plot = interaction_patch,
+  plot = intersect_percent_matrix_ggp,
   width = 4, height=9, units = "in", bg="transparent"
 )
 
@@ -1115,160 +1129,13 @@ ggsave(
 )
   
 
-## full upset with bar on right 
-upset3_ggp <- ComplexUpset::upset(
-  oroTypeDf_wide2, 
-  intersect=rev(set_cols),
-  sort_sets=FALSE,
-  min_degree=2, max_degree =2,
-  base_annotations = list(
-    # 'Intersection ratio'=intersection_ratio(
-    #   text_mapping=aes(label=!!upset_text_percentage()),
-    #   text = list(size=3, angle = 90, hjust = 0, vjust=0.5))+
-    #   theme(
-    #     panel.grid = element_blank(),
-    #     axis.text = element_blank(),
-    #     axis.title.y = element_blank()
-    #     )
-    
-    ),
-  annotations = list(
-    'Intersection ratio'=list(
-      geom = list(
-        geom_col(
-          data = oro_intersect_percentages,
-          mapping = aes(x=)
-        )
-      )
-    )
-  ),
-  set_sizes=(
-        upset_set_size(
-            geom=geom_col(
-                data = weighted_set_sizes,
-          aes(x = group, y = value, fill = as.factor(group)),
-          stat = "identity"
-            ),
-            position='right'
-        )+
-          geom_text(
-        data = weighted_set_sizes,
-        aes(x = group, y=value, label=scales::number(value, accuracy = 0.1)), hjust=0, size=5)+
-      scale_fill_manual(values = rev(oroTypeAes$col), guide=FALSE)+
-        expand_limits(y=70)+
-                 theme(
-                   axis.text.x = element_text(angle=270),
-                   axis.text.y = element_blank(),
-                   legend.position = 'none',
-                   panel.grid = element_blank(),
-                   axis.title.x = element_text(angle = 180,
-                                               hjust=0,size=10)
-                   )
-    ),
-  
-  stripes = "transparent",
-  mode = "inclusive_intersection",
-  sort_intersections_by="ratio",
-  width_ratio = 0.6,
-  height_ratio = 5
-  )+
-  theme(
-    panel.grid = element_blank(),
-    axis.title.x = element_blank(),
-    axis.text.x = element_blank(),
-    axis.title.y = element_blank(),
-    # axis.text.y = element_text(angle = 180, hjust=0, size=10),
-    axis.text.y = element_blank(),
-    plot.background = element_blank()
-  )
-
-upset3_ggp
 
 
-tmp_dat <- ggplot_build(upset3_ggp)
-
-
-## Save as svg for inkscape
-ggsave(
-  here::here("figures/infographic inkscape/2_way_upset_full.svg"),
-  plot=upset3_ggp,
-  width = 5, height=7
-)
-
-
-
-
-
-## Or adjust ratios
-upset4_ggp <- ComplexUpset::upset(
-  oroTypeDf_wide2, 
-  intersect=rev(set_cols),
-  sort_sets=FALSE,
-  min_degree=2, max_degree =2,
-  base_annotations = list(
-    # 'Intersection size' = intersection_size(
-    #   text = list(size=3)
-    #   )+
-    #   theme(
-    #     panel.grid = element_blank(),
-    #     axis.text = element_blank(),
-    #     axis.title.y = element_blank(),
-    #     plot.background = element_blank(),
-    # panel.background = element_blank()
-    #     )
-    # Or show intersection ratio
-    'Intersection ratio'=intersection_ratio(
-      text_mapping=aes(label=!!upset_text_percentage()),
-      text = list(size=3, angle = 90, hjust = 0, vjust=0.5))+
-      theme(
-        panel.grid = element_blank(),
-        axis.text = element_blank(),
-        axis.title.y = element_blank()
-        )
-    ),
-  # set_sizes=(
-  #   upset_set_size(
-  #     geom = geom_bar(aes(fill=group)))+
-  #                geom_text(aes(label=..count..), hjust=1, stat='count', size=2.5, col="white",vjust=0)+
-  # scale_fill_manual(values = oroTypeAes$col, guide=FALSE)+
-  #                theme(
-  #                  axis.text.x = element_text(angle=90), 
-  #                  legend.position = 'none',
-  #                  panel.grid = element_blank(),
-  #                  axis.title.x = element_text(size=10)
-  #                  )
-  #   )+ 
-  #   geom_text(aes(label=..count..), stat='count', size=3,hjust=0)
-  stripes = "transparent",
-  width_ratio = 0.7,
-  height_ratio = 3,
-  set_sizes = FALSE,
-  mode = "inclusive_intersection",
-  sort_intersections_by = "ratio"
-  )+
-  theme(
-    panel.grid = element_blank(),
-    plot.background = element_blank(),
-    panel.background = element_blank(),
-    axis.title.x = element_blank(),
-    axis.title.y = element_blank(),
-    axis.text.y = element_blank()
-  )
-
-upset4_ggp
-
-
-## Save as svg for inkscape
-ggsave(
-  here::here("figures/infographic inkscape/2_way_upset.svg"),
-  plot=upset2_ggp,
-  width = 1.5, height=7
-)
-
-## Or add my own bar plot
+## Or add my own bar plot for set size -----------------
 mySetSize_df <- oro_df %>%
   group_by(oro_type)%>%
   summarise(
+    n_articles = n_distinct(id),
     weightedSum = sum(oro_weight, na.rm=T)
   ) %>%
   ungroup()
@@ -1276,9 +1143,9 @@ mySetSize_df <- oro_df %>%
 
 mySetSize_ggp <- mySetSize_df%>%
   ggplot()+
-  geom_col(aes(x=oro_type, y=weightedSum, fill = oro_type)) +
-  geom_text(aes(x=oro_type, y=weightedSum, 
-                label = scales::number(weightedSum, accuracy = 0.1)), 
+  geom_col(aes(x=oro_type, y= !!sym(nArticlesMetric), fill = oro_type)) +
+  geom_text(aes(x=oro_type, y=!!sym(nArticlesMetric), 
+                label = scales::number(!!sym(nArticlesMetric), accuracy = 1)), 
             size=5, vjust=0, hjust=0)+
   coord_flip(clip="off")+
   scale_fill_manual(
@@ -1290,7 +1157,7 @@ mySetSize_ggp <- mySetSize_df%>%
     limits = rev(oroTypeAes$levels)
   )+
   labs(
-    y="N articles (weighted)"
+    y=nArticlesTitle
   )+
   theme_minimal(base_size = 12)+
   theme(
@@ -1298,11 +1165,14 @@ mySetSize_ggp <- mySetSize_df%>%
     axis.title.y = element_blank(),
     panel.grid = element_blank(),
     axis.text.x = element_blank(),
-    axis.title.x = element_blank(),
+    # axis.title.x = element_blank(),
+    axis.line.x = element_line(color = "black", linewidth = 0.8),
     panel.background = element_rect(fill="transparent", color=NA),
     plot.background = element_rect(fill="transparent", color=NA),
     plot.margin = unit(c(0,2,0,0), units = "cm")
   )
+
+mySetSize_ggp
 
 
 ## Save as svg for inkscape
@@ -1311,6 +1181,28 @@ ggsave(
   plot=mySetSize_ggp,
   width = 2, height=6
 )
+
+
+## Merge together set size bar plot with dot plot of jaccard --------------
+# sizeLeg <- ggpubr::get_legend(intersect_percent_matrix_ggp)
+
+dot_setSize_patch <- wrap_plots(
+  list(
+    intersect_percent_matrix_ggp ,
+      # theme(legend.position = "none"), 
+    mySetSize_ggp
+    ),
+  ncol = 2, widths = c(2,0.75)
+)
+  # inset_element(sizeLeg, left = 0.6, right = 0.98, bottom = 1.1, top = 1.2)
+
+## Save as svg for inkscape
+ggsave(
+  here::here("figures/infographic inkscape/intersect_dot_and_set_size.svg"),
+  plot=dot_setSize_patch,
+  width = 4, height=13
+)
+
 
 ```
 
@@ -1351,9 +1243,10 @@ if("None identified" %in% levels(continent_oro$label)){
 continent_bar_ggp1 <- ggplot(data = continent_oro %>%
                               group_by(oro_type, label) %>%
                               summarise(
+                                n_articles = sum(count, na.rm=T),
                                 weightedSum = sum(weightedSum, na.rm=T)
                               ), 
-                            aes(x=label, y = weightedSum, fill = oro_type))+
+                            aes(x=label, y = !!sym(nArticlesMetric), fill = oro_type))+
   scale_fill_manual(
     breaks = oroTypeAes$levels,
     values = oroTypeAes$col
@@ -1361,12 +1254,10 @@ continent_bar_ggp1 <- ggplot(data = continent_oro %>%
   geom_col()+
   guides(fill=guide_legend(nrow=4))+
   labs(
-    y="N articles (weighted)",
-    fill = "ORO type",
+    y=nArticlesTitle,
+    fill = stringr::str_wrap(oroTypeTitle, 10),
     x="Continent"
-
   )+
-
   theme_minimal(base_size = 10)+
   theme(
     plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm"),
@@ -1380,19 +1271,18 @@ continent_bar_ggp1
 continent_bar_ggp2 <- ggplot(data = continent_oro %>%
                               group_by(oro_type, label) %>%
                               summarise(
+                                n_articles = sum(count, na.rm=T),
                                 weightedSum = sum(weightedSum, na.rm=T)
                               ), 
-                            aes(x=oro_type, y = weightedSum, fill = label))+
+                            aes(x=oro_type, y = !!sym(nArticlesMetric), fill = label))+
   scale_fill_manual(values = level_pal)+
   geom_col()+
   guides(fill=guide_legend(nrow=3))+
   labs(
-    y="N articles (weighted)",
-    fill = "Continent",
-    x="ORO type"
-
+    y=nArticlesTitle,
+    x = oroTypeTitle,
+    fill="Continent"
   )+
-
   theme_minimal(base_size = 10)+
   theme(
     plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm"),
@@ -1453,9 +1343,10 @@ if("None identified" %in% levels(continent_oro$label)){
 continent_bar_ggp1 <- ggplot(data = continent_oro %>%
                               group_by(oro_type, label) %>%
                               summarise(
+                                n_articles = sum(count, na.rm=T),
                                 weightedSum = sum(weightedSum, na.rm=T)
                               ), 
-                            aes(x=label, y = weightedSum))+
+                            aes(x=label, y = !!sym(nArticlesMetric)))+
   scale_fill_manual(
     breaks = oroTypeAes$levels,
     values = oroTypeAes$col
@@ -1465,15 +1356,15 @@ continent_bar_ggp1 <- ggplot(data = continent_oro %>%
   geom_text(
     data = continent_oro %>%
       group_by(label) %>%
-      summarise(weightedSum = sum(weightedSum, na.rm=T)),
-    aes(label = scales::number(weightedSum, accuracy = 0.1)),
+      summarise(weightedSum = sum(weightedSum, na.rm=T), n_articles = sum(count, na.rm=T)),
+    aes(label = scales::number(!!sym(nArticlesMetric), accuracy = 1)),
     vjust=0, size= 3
   )+
   coord_cartesian(clip="off")+
   guides(fill=guide_legend(nrow=4))+
   labs(
-    y="N articles (weighted)",
-    fill = "Option\ntype",
+    y=nArticlesTitle,
+    fill = stringr::str_wrap(oroTypeTitle,10),
     x="Continent"
 
   )+
@@ -1482,6 +1373,7 @@ continent_bar_ggp1 <- ggplot(data = continent_oro %>%
     plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm"),
     axis.text.x = element_text(angle=45, hjust=1),
     legend.position = "bottom",
+    legend.title.position = "top",
     legend.box.margin = margin(0, 15, 0, 0)
   )
 
@@ -1490,25 +1382,26 @@ continent_bar_ggp1
 continent_bar_ggp2 <- ggplot(data = continent_oro %>%
                               group_by(oro_type, label) %>%
                               summarise(
+                                n_articles = sum(count, na.rm=T),
                                 weightedSum = sum(weightedSum, na.rm=T)
                               ), 
-                            aes(x=oro_type, y = weightedSum))+
+                            aes(x=oro_type, y = !!sym(nArticlesMetric)))+
   scale_fill_manual(values = level_pal)+
   geom_col(aes(fill = label))+
   # put continent sums at the top
   geom_text(
     data = continent_oro %>%
       group_by(oro_type) %>%
-      summarise(weightedSum = sum(weightedSum, na.rm=T)),
-    aes(label = scales::number(weightedSum, accuracy = 0.1)),
+      summarise(weightedSum = sum(weightedSum, na.rm=T), n_articles = sum(count, na.rm = T)),
+    aes(label = scales::number(!!sym(nArticlesMetric), accuracy = 1)),
     vjust=0, size= 3
   )+
   coord_cartesian(clip="off")+
   guides(fill=guide_legend(nrow=3))+
   labs(
-    y="N articles (weighted)",
+    y=nArticlesTitle,
     fill = "Continent",
-    x="Option type"
+    x=oroTypeTitle
 
   )+
 
@@ -1516,7 +1409,8 @@ continent_bar_ggp2 <- ggplot(data = continent_oro %>%
   theme(
     plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm"),
     axis.text.x = element_text(angle=45, hjust=1),
-    legend.position = "bottom"
+    legend.position = "bottom",
+    legend.title.position = "top"
   )
 
 continent_bar_ggp2
@@ -1526,27 +1420,27 @@ continent_bar_ggp2
 type_method_joined <- join_oro_with_label(oro_df, codedVars, study_method, 
                                      studyMethodAes$levels
                                      )%>%
-  rename(study_method = label)
+  rename(study_method = label, n_articles = count)
 
 
 method_pal <- c(studyMethodAes$col, "grey")
 
 
-method_ggp <- ggplot(type_method_joined, aes(x=oro_type, y=weightedSum))+
+method_ggp <- ggplot(type_method_joined, aes(x=oro_type, y=!!sym(nArticlesMetric)))+
   geom_col(position="stack", aes(fill = study_method))+
   # put continent sums at the top
   geom_text(
     data = type_method_joined %>%
       group_by(oro_type) %>%
-      summarise(weightedSum = sum(weightedSum, na.rm=T)),
-    aes(label = scales::number(weightedSum, accuracy = 0.1)),
+      summarise(weightedSum = sum(weightedSum, na.rm=T), n_articles = sum(!!sym(nArticlesMetric), na.rm=T)),
+    aes(label = scales::number(!!sym(nArticlesMetric), accuracy = 1)),
     vjust=0, size= 3
   )+
   coord_cartesian(clip="off")+
   labs(
-    x = "Option type",
-    y="N articles (weighted)",
-    fill = "Data\ntype"
+    x = oroTypeTitle,
+    y=nArticlesTitle,
+    fill = "Data type"
   )+
   scale_fill_manual(
     values = method_pal,
@@ -1586,6 +1480,7 @@ ggsave(here::here("figures/supplemental/oro_type_vs_continent_methods_barplots.p
 cids <- expand_labels_with_weight(codedVars, id, climatic_impact_driver) %>%
   group_by(label) %>%
   summarise(
+    n_articles = n(),
     weightedSum = sum(weight)
   ) %>%
   mutate(
@@ -1594,11 +1489,12 @@ cids <- expand_labels_with_weight(codedVars, id, climatic_impact_driver) %>%
     )
   )
 
-cid_ggp <- ggplot(cids, aes(x=label, y=weightedSum, fill = label))+
+cid_ggp <- ggplot(cids, aes(x=label, y=!!sym(nArticlesMetric), fill = label))+
   geom_col()+
+  geom_text(aes(label = !!sym(nArticlesMetric)), vjust=0, size=3)+
   labs(
     x = "Climatic impact driver",
-    y="N articles (weighted)"
+    y=nArticlesTitle
   )+
   scale_fill_manual(
     values = cidAes$col,
@@ -1635,7 +1531,8 @@ oro_cont_cid <- join_oro_with_multilabels(
     climatic_impact_driver = cidAes$levels
   ),
   id_col = "id"
-)
+) %>%
+  rename(n_articles = count)
 
 # Filter out unidentified continents
 oro_cont_cid <- oro_cont_cid %>%
@@ -1644,12 +1541,12 @@ oro_cont_cid <- oro_cont_cid %>%
 
 
 cid_continent_ggp <- ggplot()+
-  geom_col(data = oro_cont_cid , aes(x=climatic_impact_driver, y= weightedSum, fill = oro_type))+
+  geom_col(data = oro_cont_cid , aes(x=climatic_impact_driver, y= !!sym(nArticlesMetric), fill = oro_type))+
   geom_text(
     data = oro_cont_cid %>%
       group_by(climatic_impact_driver, continent) %>%
-      summarise(weightedSum = sum(weightedSum, na.rm=T)), 
-    aes(x=climatic_impact_driver, y= weightedSum, label = scales::number(weightedSum, accuracy = 0.1)),
+      summarise(weightedSum = sum(weightedSum, na.rm=T), n_articles = sum(n_articles, na.rm=T)), 
+    aes(x=climatic_impact_driver, y= !!sym(nArticlesMetric), label = scales::number(!!sym(nArticlesMetric), accuracy = 1)),
     vjust = 0, size=3
   )+
   coord_cartesian(clip="off")+
@@ -1677,14 +1574,15 @@ cid_continent_ggp <- ggplot()+
   guides(fill = guide_legend(nrow=2))+
   labs(
     x = "Climatic impact driver",
-    y="N articles (weighted)",
-    fill = "Option\ntype"
+    y=nArticlesTitle,
+    fill = stringr::str_wrap(oroTypeTitle,10)
   )+
   theme_bw(base_size = 11)+
   theme(
     axis.text.x = element_text(angle=45, hjust=1),
     plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm"),
     legend.position = "bottom",
+    legend.title.position = "top",
     legend.text = element_text(size=8)
   )
 
@@ -1716,13 +1614,14 @@ oro_time_cid <- join_oro_with_multilabels(
 oro_time_cid_summary <- oro_time_cid %>%
   group_by(time_scale, climatic_impact_driver) %>%
   summarise(
+    n_articles = sum(count, na.rm=T),
     weightedSum = sum(weightedSum, na.rm=T)
   )
 
 
 ## test for association chisq
 oro_time_cid_summary_wide <- oro_time_cid_summary%>%
-  pivot_wider(values_from = weightedSum, names_from = c(climatic_impact_driver),
+  pivot_wider(values_from = !!sym(nArticlesMetric), names_from = c(climatic_impact_driver),
               values_fill = 0)
 
 time_cid_chisq <- chisq.test(oro_time_cid_summary_wide[,-1])
@@ -1730,20 +1629,22 @@ time_cid_chisq
 # 	Pearson's Chi-squared test
 # 
 # data:  oro_time_cid_summary_wide[, -1]
-# X-squared = 12.536, df = 15, p-value = 0.6381
+# X-squared = 1029.4, df = 102, p-value < 2.2e-16
+
+
 
 cid_time_ggp <- ggplot(oro_time_cid_summary, 
                        aes(x = climatic_impact_driver,
                            y = time_scale))+
-  geom_tile(aes(fill = weightedSum))+
+  geom_tile(aes(fill = !!sym(nArticlesMetric)))+
   scale_fill_viridis()+
-  geom_text(aes(label = scales::number(weightedSum, accuracy=0.1)), size=3, color = "red")+
+  geom_text(aes(label = scales::number(!!sym(nArticlesMetric), accuracy=1)), size=3, color = "red")+
   labs(
     x = "Climatic impact driver",
     y="Time scale",
-    fill = "N articles\n(weighted)",
+    fill = nArticlesTitle,
     caption = paste0(
-      "Chi-squared statistic = ", scales::number(time_cid_chisq$statistic, accuracy = 0.1),", ",time_cid_chisq$parameter," degrees of freedom, p-value = ", scales::number(time_cid_chisq$p.value, accuracy = 0.01)
+      "Chi-squared statistic = ", scales::number(time_cid_chisq$statistic, accuracy = 0.1),", ",time_cid_chisq$parameter," degrees of freedom, p-value ", rstatix::p_format(time_cid_chisq$p.value)
     )
   )+
   theme_minimal(base_size = 12)+
@@ -1769,29 +1670,46 @@ ggsave(
 type_method_joined <- join_oro_with_label(oro_df, codedVars, study_method, 
                                      studyMethodAes$levels
                                      )%>%
-  rename(study_method = label)
+  rename(study_method = label, n_articles = count)
 
-## The number of weighted studies with social science methods
+## The number of weighted studies with social science methods 
+
+# weighted
 N_social_sci_studies <- sum(type_method_joined$weightedSum[
   type_method_joined$study_method %in% 
     studyMethodAes$levels[studyMethodAes$branch == "Primary - social"]
 ], na.rm = TRUE)
 print(paste("N social science studies (weighted) =", 
             scales::number(N_social_sci_studies, accuracy = 0.1)))
-
 # "N social science studies (weighted) = 52.8"
+
+# non-weighted
+terms <- studyMethodAes$levels[studyMethodAes$branch == "Primary - social"]
+
+pattern <- paste(stringr::str_replace_all(terms, "([()])", "\\\\\\1"), collapse = "|")
+
+N_social_sci_studies <- codedVars %>%
+  filter(grepl(pattern, study_method)) %>%
+  summarise(
+    n_articles = n_distinct(id)
+  ) %>%
+  pull(n_articles)
+
+print(paste("N social science studies (non-weighted) =", 
+            scales::number(N_social_sci_studies, accuracy = 1)))
+# "N social science studies (non-weighted) = 59"
 
 
 ## Plot
 method_pal <- c(studyMethodAes$col, "grey")
 
 
-method_ggp <- ggplot(type_method_joined, aes(x=oro_type, y=weightedSum, fill = study_method))+
+method_ggp <- ggplot(type_method_joined, aes(x=oro_type, y=!!sym(nArticlesMetric), fill = study_method))+
   geom_col(position="stack")+
   labs(
-    x = "ORO type",
-    y="N articles (weighted)",
-    fill = "Data\ntype"
+    x = oroTypeTitle,
+    y=nArticlesTitle,
+    fill = "Data type"
   )+
   scale_fill_manual(
     values = method_pal,
@@ -1822,30 +1740,31 @@ type_spatial_scale_joined <- join_oro_with_label(
   codedVars, 
   spatial_scale, 
   c("Local","National","Regional","Global","None")
-  ) 
+  ) %>%
+  rename(n_articles = count)
   # filter(label != "None") %>%
   # mutate(label = droplevels(label))
 
 type_spatial_scale_joined_totals <- type_spatial_scale_joined %>%
   group_by(label) %>%
   summarise(
-    weightedSumTotal = sum(weightedSum, na.rm = T)
+    Total = sum(!!sym(nArticlesMetric), na.rm=T)
   )
 
 type_spatial_scale_joined <- type_spatial_scale_joined %>%
   left_join(type_spatial_scale_joined_totals, by = "label") %>%
   mutate(
-    Proportion = weightedSum/weightedSumTotal
+    Proportion = !!sym(nArticlesMetric)/Total
   ) %>%
-  select(-weightedSumTotal)
+  select(-Total)
 
 type_spatial_scale_joined <- reshape2::melt(type_spatial_scale_joined, 
-                                  measure.vars = c("weightedSum","Proportion"),
+                                  measure.vars = c(nArticlesMetric,"Proportion"),
                                   value.name = "Value",
                                   variable.name = "Metric") %>%
   mutate(
-    Metric = factor(Metric, levels = c("weightedSum","Proportion"),
-                    labels = c("N articles (weighted)", "Proportion"))
+    Metric = factor(Metric, levels = c(nArticlesMetric,"Proportion"),
+                    labels = c(nArticlesTitle, "Proportion"))
   )
 
 
@@ -1857,7 +1776,7 @@ spatial_scale_ggp <- ggplot(type_spatial_scale_joined, aes(x=label, y=Value, fil
   labs(
     x = "Spatial scale",
     y="Value",
-    fill = "Option type"
+    fill = oroTypeTitle
   )+
   scale_fill_manual(
     values = oroTypeAes$col,
@@ -1871,12 +1790,12 @@ spatial_scale_ggp <- ggplot(type_spatial_scale_joined, aes(x=label, y=Value, fil
 
 # Or just number
 spatial_scale_ggp <- ggplot(type_spatial_scale_joined %>%
-                              filter(Metric == "N articles (weighted)"), 
+                              filter(Metric == nArticlesTitle), 
                             aes(x=label, y=Value, fill = oro_type))+
   geom_col(position="stack")+
   geom_text(
     data = type_spatial_scale_joined %>%
-      filter(Metric == "N articles (weighted)") %>%
+      filter(Metric == nArticlesTitle) %>%
       group_by(label) %>%
       summarise(
         Value = sum(Value, na.rm = T)
@@ -1887,8 +1806,8 @@ spatial_scale_ggp <- ggplot(type_spatial_scale_joined %>%
   coord_cartesian(clip="off")+
   labs(
     x = "Spatial scale",
-    y="N articles (weighted)",
-    fill = "Option type"
+    y=nArticlesTitle,
+    fill = oroTypeTitle
   )+
   scale_fill_manual(
     values = oroTypeAes$col,
@@ -1909,30 +1828,31 @@ type_time_scale_joined <- join_oro_with_label(
   codedVars, 
   time_scale, 
   c("<= 1 month","1 month <= 1 year","1 year <= 5 years","5 years <= 10 years","> 10 years","None")
-  ) 
+  ) %>%
+  rename(n_articles = count)
   # filter(label != "None") %>%
   # mutate(label = droplevels(label))
 
 type_time_scale_joined_totals <- type_time_scale_joined %>%
   group_by(label) %>%
   summarise(
-    weightedSumTotal = sum(weightedSum, na.rm = T)
+    Total = sum(!!sym(nArticlesMetric), na.rm = T)
   )
 
 type_time_scale_joined <- type_time_scale_joined %>%
   left_join(type_time_scale_joined_totals, by = "label") %>%
   mutate(
-    Proportion = weightedSum/weightedSumTotal
+    Proportion = !!sym(nArticlesMetric)/Total
   ) %>%
-  select(-weightedSumTotal)
+  select(-Total)
 
 type_time_scale_joined <- reshape2::melt(type_time_scale_joined, 
-                                  measure.vars = c("weightedSum","Proportion"),
+                                  measure.vars = c(nArticlesMetric,"Proportion"),
                                   value.name = "Value",
                                   variable.name = "Metric") %>%
   mutate(
-    Metric = factor(Metric, levels = c("weightedSum","Proportion"),
-                    labels = c("N articles (weighted)", "Proportion"))
+    Metric = factor(Metric, levels = c(nArticlesMetric,"Proportion"),
+                    labels = c(nArticlesTitle, "Proportion"))
   )
 
 # with number and proportion
@@ -1942,7 +1862,7 @@ time_scale_ggp <- ggplot(type_time_scale_joined, aes(x=label, y=Value, fill = or
   labs(
     x = "Time scale",
     y="Value",
-    fill = "Option type"
+    fill = oroTypeTitle
   )+
   scale_fill_manual(
     values = oroTypeAes$col,
@@ -1957,12 +1877,12 @@ time_scale_ggp <- ggplot(type_time_scale_joined, aes(x=label, y=Value, fill = or
 
 # Or just number
 time_scale_ggp <- ggplot(type_time_scale_joined %>%
-                              filter(Metric == "N articles (weighted)"), 
+                              filter(Metric == nArticlesTitle), 
                             aes(x=label, y=Value, fill = oro_type))+
   geom_col(position="stack")+
   geom_text(
     data = type_time_scale_joined %>%
-      filter(Metric == "N articles (weighted)") %>%
+      filter(Metric == nArticlesTitle) %>%
       group_by(label) %>%
       summarise(
         Value = sum(Value, na.rm = T)
@@ -1973,8 +1893,8 @@ time_scale_ggp <- ggplot(type_time_scale_joined %>%
   coord_cartesian(clip="off")+
   labs(
     x = "Time scale",
-    y="N articles (weighted)",
-    fill = "Option type"
+    y=nArticlesTitle,
+    fill = oroTypeTitle
   )+
   scale_fill_manual(
     values = oroTypeAes$col,
@@ -2002,28 +1922,29 @@ type_governance_joined <- join_oro_with_label(
                         "Private organizations/companies")
   )%>%
   filter(label != "None identified") %>%
-  mutate(label = droplevels(label))
+  mutate(label = droplevels(label)) %>%
+  rename(n_articles = count)
 
 type_governance_joined_totals <- type_governance_joined %>%
   group_by(label) %>%
   summarise(
-    weightedSumTotal = sum(weightedSum, na.rm = T)
+    Total = sum(!!sym(nArticlesMetric), na.rm = T)
   )
 
 type_governance_joined <- type_governance_joined %>%
   left_join(type_governance_joined_totals, by = "label") %>%
   mutate(
-    Proportion = weightedSum/weightedSumTotal
+    Proportion = !!sym(nArticlesMetric)/Total
   ) %>%
-  dplyr::select(-weightedSumTotal)
+  dplyr::select(-Total)
 
 type_governance_joined <- reshape2::melt(type_governance_joined, 
-                                  measure.vars = c("weightedSum","Proportion"),
+                                  measure.vars = c(nArticlesMetric,"Proportion"),
                                   value.name = "Value",
                                   variable.name = "Metric") %>%
   mutate(
-    Metric = factor(Metric, levels = c("weightedSum","Proportion"),
-                    labels = c("N articles (weighted)", "Proportion"))
+    Metric = factor(Metric, levels = c(nArticlesMetric,"Proportion"),
+                    labels = c(nArticlesTitle, "Proportion"))
   )
 
 # WIth n articles and proportion
@@ -2033,7 +1954,7 @@ governance_ggp <- ggplot(type_governance_joined, aes(x=label, y=Value, fill = or
   labs(
     x = "Governance body",
     y="Value",
-    fill = "Option type"
+    fill = oroTypeTitle
   )+
   scale_fill_manual(
     values = oroTypeAes$col,
@@ -2048,12 +1969,12 @@ governance_ggp <- ggplot(type_governance_joined, aes(x=label, y=Value, fill = or
 
 # Or just number
 governance_ggp <- ggplot(type_governance_joined %>%
-                              filter(Metric == "N articles (weighted)"), 
+                              filter(Metric == nArticlesTitle), 
                             aes(x=label, y=Value, fill = oro_type))+
   geom_col(position="stack")+
   geom_text(
     data = type_governance_joined %>%
-      filter(Metric == "N articles (weighted)") %>%
+      filter(Metric == nArticlesTitle) %>%
       group_by(label) %>%
       summarise(
         Value = sum(Value, na.rm = T)
@@ -2064,8 +1985,8 @@ governance_ggp <- ggplot(type_governance_joined %>%
   coord_cartesian(clip="off")+
   labs(
     x = "Governance body",
-    y="N articles (weighted)",
-    fill = "Option type"
+    y=nArticlesTitle,
+    fill = oroTypeTitle
   )+
   scale_fill_manual(
     values = oroTypeAes$col,
@@ -2094,7 +2015,9 @@ plotList = list(
 combined_patchwork <- wrap_plots(plotList, ncol = 3, guides = "collect") + 
   plot_annotation(tag_levels = 'a') &
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) &
-  theme(legend.position = "bottom")
+  theme(legend.position = "bottom",
+        legend.title.position = "top"
+        )
 
 ggsave(here::here("figures/supplemental/spatial_time_scale_governance_barplots.pdf"),
        combined_patchwork, width = 9, height = 5)
@@ -2112,40 +2035,43 @@ type_spatial_scale_joined <- join_oro_with_label(
   codedVars, 
   spatial_scale, 
   c("Local","National","Regional","Global","None")
-  ) 
+  ) %>%
+  rename(n_articles = count)
   # filter(label != "None") %>%
   # mutate(label = droplevels(label))
 
 type_spatial_scale_joined_totals <- type_spatial_scale_joined %>%
   group_by(label) %>%
   summarise(
-    weightedSumTotal = sum(weightedSum, na.rm = T)
+    Total = sum(!!sym(nArticlesMetric), na.rm=T)
   )
 
 type_spatial_scale_joined <- type_spatial_scale_joined %>%
   left_join(type_spatial_scale_joined_totals, by = "label") %>%
   mutate(
-    Proportion = weightedSum/weightedSumTotal
+    Proportion = !!sym(nArticlesMetric)/Total
   ) %>%
-  select(-weightedSumTotal)
+  select(-Total)
 
 type_spatial_scale_joined <- reshape2::melt(type_spatial_scale_joined, 
-                                  measure.vars = c("weightedSum","Proportion"),
+                                  measure.vars = c(nArticlesMetric,"Proportion"),
                                   value.name = "Value",
                                   variable.name = "Metric") %>%
   mutate(
-    Metric = factor(Metric, levels = c("weightedSum","Proportion"),
-                    labels = c("N articles (weighted)", "Proportion"))
+    Metric = factor(Metric, levels = c(nArticlesMetric,"Proportion"),
+                    labels = c(nArticlesTitle, "Proportion"))
   )
 
 
 # Make my own special color scale
 type_spatial_scale_joined_n <- type_spatial_scale_joined%>%
-                              filter(Metric == "N articles (weighted)") %>%
+                              filter(Metric == nArticlesTitle) %>%
   mutate(
     Value_cut = cut(Value, 
                      breaks = pretty(type_spatial_scale_joined$Value,n = 8)),
     label = droplevels(label))
+
+
 
 # Specific per-oro col pal
 oros <- levels(type_spatial_scale_joined_n$oro_type)
@@ -2272,9 +2198,9 @@ spatial_scale_ggp <- ggplot(type_spatial_scale_joined_n %>%
   )+
   scale_y_discrete(limits = rev(levels(type_spatial_scale_joined_n$label)))+
   scale_color_identity(guide="none")+
-  scale_fill_distiller(palette = "Blues", direction=1, name = "N articles\n(weighted)")+
+  scale_fill_distiller(palette = "Blues", direction=1, name = nArticlesTitle)+
   geom_text(
-    aes(label = scales::number(Value, accuracy = 0.1), color = text_color),
+    aes(label = scales::number(Value, accuracy = 1), color = text_color),
     size = 3
   )+
   ggnewscale::new_scale_fill()+
@@ -2300,7 +2226,7 @@ spatial_scale_ggp <- ggplot(type_spatial_scale_joined_n %>%
   coord_cartesian(clip="off")+
   labs(
     y = "Spatial scale",
-    x = "Option type"
+    x = oroTypeTitle
   )+
   theme_bw(base_size = 12)+
   theme(
@@ -2335,8 +2261,8 @@ spatial_scale_bar_ggp <- ggplot(type_spatial_scale_joined_n,
   coord_cartesian(clip="off")+
   labs(
     x = "Spatial scale",
-    y="N articles (weighted)",
-    fill = "Option type"
+    y=nArticlesTitle,
+    fill = oroTypeTitle
   )+
   scale_fill_manual(
     values = oroTypeAes$col,
@@ -2359,35 +2285,37 @@ type_time_scale_joined <- join_oro_with_label(
   codedVars, 
   time_scale, 
   c("<= 1 month","1 month <= 1 year","1 year <= 5 years","5 years <= 10 years","> 10 years","None")
-  ) 
+  ) %>%
+  rename(n_articles = count)
   # filter(label != "None") %>%
   # mutate(label = droplevels(label))
 
 type_time_scale_joined_totals <- type_time_scale_joined %>%
   group_by(label) %>%
   summarise(
-    weightedSumTotal = sum(weightedSum, na.rm = T)
+    Total = sum(!!sym(nArticlesMetric), na.rm = T)
   )
 
 type_time_scale_joined <- type_time_scale_joined %>%
   left_join(type_time_scale_joined_totals, by = "label") %>%
   mutate(
-    Proportion = weightedSum/weightedSumTotal
+    Proportion = !!sym(nArticlesMetric)/Total
   ) %>%
-  select(-weightedSumTotal)
+  select(-Total)
 
 type_time_scale_joined <- reshape2::melt(type_time_scale_joined, 
-                                  measure.vars = c("weightedSum","Proportion"),
+                                  measure.vars = c(nArticlesMetric,"Proportion"),
                                   value.name = "Value",
                                   variable.name = "Metric") %>%
   mutate(
-    Metric = factor(Metric, levels = c("weightedSum","Proportion"),
-                    labels = c("N articles (weighted)", "Proportion"))
+    Metric = factor(Metric, levels = c(nArticlesMetric,"Proportion"),
+                    labels = c(nArticlesTitle, "Proportion"))
   )
+
 
 # Just use number of articles not proportion
 type_time_scale_joined_n <- type_time_scale_joined %>%
-  filter(Metric == "N articles (weighted)") %>%
+  filter(Metric == nArticlesTitle) %>%
   mutate(
     label = forcats::fct_relevel(label, c("None", "<= 1 month","1 month <= 1 year","1 year <= 5 years","5 years <= 10 years","> 10 years")),
     adj_value = (as.numeric(label)-2)*5, 
@@ -2454,8 +2382,8 @@ time_scale_ggp <- ggplot(
                       override.aes = list(pattern = "none")))+
   labs(
     y = "Time since implementation",
-    x = "N articles (weighted)",
-    fill = "Option type"
+    x = nArticlesTitle,
+    fill = oroTypeTitle
   )+
   theme(
     axis.text.y = element_blank(),
@@ -2489,35 +2417,36 @@ type_governance_joined <- join_oro_with_label(
                         "Private organizations/companies")
   )%>%
   filter(label != "None identified") %>%
-  mutate(label = droplevels(label))
+  mutate(label = droplevels(label)) %>%
+  rename(n_articles = count)
 
 type_governance_joined_totals <- type_governance_joined %>%
   group_by(label) %>%
   summarise(
-    weightedSumTotal = sum(weightedSum, na.rm = T)
+    Total = sum(!!sym(nArticlesMetric), na.rm = T)
   )
 
 type_governance_joined <- type_governance_joined %>%
   left_join(type_governance_joined_totals, by = "label") %>%
   mutate(
-    Proportion = weightedSum/weightedSumTotal
+    Proportion = !!sym(nArticlesMetric)/Total
   ) %>%
-  dplyr::select(-weightedSumTotal)
+  dplyr::select(-Total)
 
 type_governance_joined <- reshape2::melt(type_governance_joined, 
-                                  measure.vars = c("weightedSum","Proportion"),
+                                  measure.vars = c(nArticlesMetric,"Proportion"),
                                   value.name = "Value",
                                   variable.name = "Metric") %>%
   mutate(
-    Metric = factor(Metric, levels = c("weightedSum","Proportion"),
-                    labels = c("N articles (weighted)", "Proportion"))
+    Metric = factor(Metric, levels = c(nArticlesMetric,"Proportion"),
+                    labels = c(nArticlesTitle, "Proportion"))
   )
 
 
 
 # Just use number of articles not proportion
 type_governance_joined_n  <- type_governance_joined  %>%
-  filter(Metric == "N articles (weighted)") %>%
+  filter(Metric == nArticlesTitle) %>%
   mutate(
     label = forcats::fct_recode(label, "Private organizations/ companies" = "Private organizations/companies", "Community- based" = "Community-based"),
     label = forcats::fct_relevel(label, c("Private organizations/ companies",
@@ -2584,7 +2513,7 @@ governance_ggp <- ggplot(
   # label the number of articles
   geom_text(
     data = type_governance_joined_n %>% group_by(label) %>% arrange(oro_type)%>% slice(n()),
-    aes(x = end, y=width_min+0.45, label = scales::number(n_articles, 0.1)),
+    aes(x = end, y=width_min+0.45, label = scales::number(n_articles, 1)),
     vjust=0.5, hjust=0, nudge_x=1, size=4, fontface = "italic",
     check_overlap = TRUE
   )+
@@ -2597,8 +2526,8 @@ governance_ggp <- ggplot(
                       override.aes = list(pattern = "none")))+
   labs(
     y = "Scale of governing body",
-    x = "N articles (weighted)",
-    fill = "Option type"
+    x = nArticlesTitle,
+    fill = oroTypeTitle
   )+
   theme(
     axis.text.y = element_blank(),
@@ -2650,10 +2579,10 @@ plotList = list(
 
 
 
-combined_patchwork <- wrap_plots(plotList, design = patch_layout, heights = c(3, 1), widths = c(1.2,1,1)) 
+combined_patchwork <- wrap_plots(plotList, design = patch_layout, heights = c(3, 1), widths = c(1.1,1,1)) 
 
 ggsave(here::here("figures/main/spatial_time_scale_governance_plots.pdf"),
-       combined_patchwork, width = 12, height = 6.5)
+       combined_patchwork, width = 13, height = 6.5)
 
 
 
@@ -2680,13 +2609,14 @@ scale_scatter_df <- join_oro_with_multilabels(
     time_scale, spatial_scale, oro_type
   )%>%
   summarise(
+    n_articles = sum(count, na.rm=T),
     weightedSum = sum(weightedSum, na.rm=T)
   )
 
 totals <- scale_scatter_df %>%
   group_by(oro_type) %>%
   summarise(
-    total = sum(weightedSum, na.rm = T)
+    total = sum(!!sym(nArticlesMetric), na.rm = T)
   )
 
 # # Use if i want a binned scale by quantile, but decide not
@@ -2703,8 +2633,8 @@ scale_scatter_ggp <- ggplot(
     # )
   ) +
   facet_wrap(vars(oro_type), labeller = label_wrap_gen(width = 30))+
-  geom_tile(aes(x=time_scale, y=spatial_scale, fill = weightedSum))+
-  geom_text(aes(x=time_scale, y=spatial_scale, label = scales::number(weightedSum, accuracy = 0.1)),
+  geom_tile(aes(x=time_scale, y=spatial_scale, fill = !!sym(nArticlesMetric)))+
+  geom_text(aes(x=time_scale, y=spatial_scale, label = scales::number(!!sym(nArticlesMetric), accuracy = 1)),
             col = "red", size = 3)+
   # scale_fill_viridis_c()+
   scale_fill_gradientn(
@@ -2715,7 +2645,7 @@ scale_scatter_ggp <- ggplot(
   labs(
     x = "Time scale",
     y = "Spatial scale",
-    fill = "N Articles\n(weighted)"
+    fill = nArticlesTitle
   )+
   theme(
     axis.text.x = element_text(angle=90, hjust=1, vjust = 0.5),
@@ -2750,7 +2680,8 @@ oro_cont_pe <- join_oro_with_multilabels(
     climatic_impact_driver = c("TRUE","FALSE")
   ),
   id_col = "id"
-)
+)%>%
+  rename(n_articles = count)
 
 # Filter out unidentified continents
 oro_cont_pe <- oro_cont_pe %>%
@@ -2759,7 +2690,7 @@ oro_cont_pe <- oro_cont_pe %>%
 
 
 pe_continent_ggp <- ggplot()+
-  geom_col(data = oro_cont_pe , aes(x=oro_type, y= weightedSum, fill = procedural_equity))+
+  geom_col(data = oro_cont_pe , aes(x=oro_type, y= !!sym(nArticlesMetric), fill = procedural_equity))+
   facet_wrap(vars(continent), ncol = 2, scales="free_y")+
   scale_fill_manual(
     values = c("darkgreen","grey"),
@@ -2783,8 +2714,8 @@ pe_continent_ggp <- ggplot()+
   scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.25)))+
   
   labs(
-    x = "ORO type",
-    y="N articles (weighted)",
+    x = oroTypeTitle,
+    y= nArticlesTitle,
     fill = "Procedural\nequity"
   )+
   theme_bw(base_size = 11)+
@@ -2814,7 +2745,7 @@ axes:
 - outcomes (one axis for each type)
 
 
-```{r Petal plot of weighted means per axis scaled 0 to 1}
+```{r Petal plot of weighted means per axis scaled 0 to 1 -- remove}
 
 # calculate outcomes
 oroOutcomes <- expand_labels_with_weight(df = studyResults, id_col = article_outcome_id, list_col = oro_type) %>%
@@ -3019,7 +2950,7 @@ ggsave(
 ```
 
 
-```{r Petal plot of weighted means per axis ranked and excl adaptive axis}
+```{r Petal plot of weighted means per axis ranked and excl adaptive axis -- remove}
 
 
 ## Get axes from coded variables
@@ -3197,7 +3128,7 @@ ggsave(
 
 
 
-```{r Bar plot version of Petal plot - of weighted means per axis ranked and excl adaptive axis}
+```{r Bar plot version of Petal plot - of weighted means per axis ranked and excl adaptive axis -- remove}
 
 
 ## Get axes from coded variables
@@ -3552,11 +3483,10 @@ scale_cor_test
 #       tau 
 # 0.2142857  
 
+
+
 ## grid lines
 # Format for ggplot
-
-allAxisColsLabs <- c("Scale of governing body","Rule of law","Spatial scale of implementation","Time since implementation")
-
 ymn <- floor(min(dashboard_df$axis_rank))
 ymx <- ceiling(max(dashboard_df$axis_rank, na.rm=T))
 grid_lines <- pretty(c(ymn, ymx),n = 3)
@@ -3567,7 +3497,7 @@ oro_context_bar_ggp <- ggplot(dashboard_df, aes(x = oro_type, y = axis_rank, fil
   facet_wrap(vars(category), labeller = label_wrap_gen(width=30))+
   geom_col(width = 1, color = "white", position = position_identity()) +
   scale_y_continuous(
-    name = "Ranking",
+    name = "Order",
     breaks = grid_lines,
     expand = expansion(c(0,0.1))
   )+
@@ -3575,7 +3505,7 @@ oro_context_bar_ggp <- ggplot(dashboard_df, aes(x = oro_type, y = axis_rank, fil
                     values = oroTypeAes$col)+
   coord_cartesian(clip="off")+
   labs(
-    x = "Option type"
+    x = oroTypeTitle
   )+
   theme_minimal(base_size = 11)+
   theme(
@@ -3604,14 +3534,14 @@ ggsave(
 
 
 ## bar plot facetted by oro ------------
-oro_context_bar_switch_ggp <- ggplot(dashboard_df, aes(x = category, y = axis_rank, fill = category)) +
+oro_context_bar_switch_ggp <- ggplot(dashboard_df, aes(x = category, y = axis_rank, fill = oro_type)) +
   facet_wrap(vars(oro_type), labeller = label_wrap_gen(width=30),
              ncol=2)+
   geom_col(width = 1, color = "white", position = position_identity()) +
   # geom_text(aes(label = scales::number(n_weighted, accuracy = 0.1)), vjust=0, size=3)+ # label weighted articles
   geom_text(aes(label = round(n)), vjust=0, size=3)+ # label total N articles
   scale_y_continuous(
-    name = "Ranking",
+    name = "Order",
     breaks = grid_lines,
     labels = c("low", rep("", length(grid_lines)-2), 'high'),
     expand = expansion(c(0,0.1))
@@ -3620,18 +3550,23 @@ oro_context_bar_switch_ggp <- ggplot(dashboard_df, aes(x = category, y = axis_ra
     limits = levels(dashboard_df$category),
     labels = c("Governance","Law","Spatial scale","Time scale")
   )+
-  scale_fill_brewer(palette = "Set2")+
+  scale_fill_manual(
+    breaks = oroTypeAes$levels,
+    values = oroTypeAes$col
+  )+
   coord_cartesian(clip="off")+
   guides(
     fill = guide_legend(nrow=2)
   )+
   labs(
     x = "Criterion",
-    fill = ""
+    fill = oroTypeTitle
   )+
   theme_minimal(base_size = 12)+
   theme(
     legend.position = "bottom",
+    legend.title.position = "top",
+    legend.title = element_text(hjust=0.5),
     axis.text.x = element_text(angle=45, vjust=1, hjust=1),
     axis.title.y = element_text(margin = margin(r=10)),
     strip.text = element_text(size=10),
@@ -3648,12 +3583,6 @@ oro_context_bar_switch_ggp <- ggplot(dashboard_df, aes(x = category, y = axis_ra
 
 oro_context_bar_switch_ggp
 
-# Save
-ggsave(
-  here::here("figures/main/bar_plot_oro_ranking.pdf"),
-  oro_context_bar_switch_ggp,
-  width = 5, height = 7
-)
 
 
 
@@ -3685,7 +3614,7 @@ petal_ggp <- ggplot(dashboard_df, aes(x = category, y = axis_rank, fill = catego
   )+
   scale_fill_brewer(palette = "Set2")+
   labs(
-    fill = "Dimension"
+    fill = "Criterion"
   )+
   theme_minimal()+
   theme(
@@ -3742,20 +3671,20 @@ for(i in 1:length(categories)){
                        )+
       scale_fill_manual(breaks = oroTypeAes$levels, 
                         values = oroTypeAes$col)+
-      guides(fill = guide_legend(nrow=4, title = ""),
+      guides(fill = guide_legend(nrow=4, title = oroTypeTitle),
              theta = guide_axis_theta(angle = 90),
              r     = guide_axis(angle = 0))+
       coord_radial(end = -0.5 * pi, start = 0.5 * pi,
                    inner.radius = 0.7, r.axis.inside = TRUE)+
       labs(
         title = paste(letters[i]),
-        subtitle = stringr::str_wrap(cat, width = 30),
+        subtitle = stringr::str_wrap(cat, width = 15),
         x = ""
       )+
       theme_minimal(base_size = 11)+
       theme(
-        plot.title = element_text(face="bold", size=15, margin = margin(b=15, unit="pt")),
-        plot.subtitle = element_text(size=12, margin = margin(b=40, unit="pt")),
+        plot.title = element_text(face="bold", size=16, margin = margin(b=12, unit="pt")),
+        plot.subtitle = element_text(size=12, margin = margin(b=50, unit="pt")),
         axis.text.x = element_text(angle=45, vjust=1, hjust=1),
         strip.text = element_text(size=10),
         axis.line.theta = element_line(colour = "black", linewidth = 0.8),
@@ -3766,7 +3695,10 @@ for(i in 1:length(categories)){
      
         panel.spacing = unit(1, "lines"),
         plot.margin = unit(c(0.5, 1, 1,1), "cm"),
-        legend.text = element_text(size = 12)
+        legend.text = element_text(size = 13),
+        legend.position = "bottom",
+        legend.title.position = "top",
+        legend.title = element_text(hjust=0.5, size=14, face = "bold")
       )
     # tmp_plot 
       
@@ -3815,6 +3747,10 @@ all_plots_list <- c(oro_context_dashboard_ggp_list,
                     list(tmp_leg), 
                     list(oro_context_bar_switch_ggp+ggtitle("e.")+
                            theme(
+                             legend.position = "none",
+                             axis.text = element_text(size=13),
+                             axis.title = element_text(size=14),
+                             strip.text = element_text(size=14),
                              plot.title = element_text(face="bold")
                              # plot.margin = unit(c(80,5,5,10),"pt")
                            )
@@ -3826,7 +3762,7 @@ patch_plots <- wrap_plots(all_plots_list, design = plot_layouts,
 ggsave(
   here::here("figures/main/dashboard_and_barplots_rankings.pdf"),
   plot=patch_plots,
-  width=13, height=10
+  width=13, height=11
 )
 
 ```
@@ -3907,20 +3843,20 @@ oro_rank_df <- join_oro_with_multilabels(
     oro_type, factor_name, factor_level
   ) %>%
   summarise(
-    n = n_distinct(id),
-    n_weighted = sum(weight, na.rm=T)
+    n_articles = n_distinct(id),
+    weightedSum = sum(weight, na.rm=T)
   ) %>%
   ungroup()
 
 oro_totals <- oro_rank_df %>%
   group_by(oro_type, factor_name) %>%
-  summarise(total = sum(n)) %>%
+  summarise(total = sum(n_articles)) %>%
   ungroup()
 
 oro_rank_df <- oro_rank_df %>%
   left_join(oro_totals)%>%
   mutate(
-    prop = n/total
+    prop = n_articles/total
   ) %>%
   # Calculate ranking
   arrange(factor_name, factor_level, prop) %>%
@@ -3948,7 +3884,7 @@ level_rank_mat_ggp <- ggplot(oro_rank_df,
   )+
   scale_x_discrete(limits = rev(levels(oro_rank_df$oro_type)), drop=TRUE)+
   geom_tile(height = 0.8)+
-  geom_text(aes(label=scales::number(n_weighted, accuracy=0.1)), 
+  geom_text(aes(label=scales::number(!!sym(nArticlesMetric), accuracy=1)), 
             color="red", size=3)+
   scale_fill_stepsn(
     breaks = function(in_limits){seq(in_limits[1], in_limits[2], by=1)},
@@ -3956,9 +3892,9 @@ level_rank_mat_ggp <- ggplot(oro_rank_df,
     labels = c("low", rep("", 6), "high")
   )+
   labs(
-    x = "Option type",
+    x = oroTypeTitle,
     y="",
-    fill = "Rank"
+    fill = "Order"
   )+
   theme_minimal(base_size = 12)+
   theme(
@@ -3977,7 +3913,7 @@ level_rank_mat_ggp <- ggplot(oro_rank_df,
 
 
 ggsave(
-  here::here("figures/main/oro_ranking_matrix.pdf"),
+  here::here("figures/supplemental/oro_ranking_matrix.pdf"),
   level_rank_mat_ggp,
   width = 5.5, height = 7.5
 )
@@ -4011,12 +3947,14 @@ type_outcome_joined <- outcomes %>% #merge(oro_df, outcomes, by = "id", all = TR
   mutate(weight = oro_weight*outcome_type_weight) %>%
   group_by(oro_type, outcome_type, data_type, result_effect) %>%
   summarise(
+    n_articles = n_distinct(article_outcome_id),
     weightedSum = sum(weight),
     oro_weight = sum(oro_weight)
   ) %>%
   ungroup() %>%
   replace_na(list(outcome_type = "None", data_type = "None", result_effect = "None")) %>%
   mutate(
+    n_articles = ifelse(is.na(n_articles), 0, n_articles),
     weightedSum = ifelse(is.na(weightedSum), oro_weight, weightedSum),
     oro_type = factor(
       oro_type,
@@ -4049,12 +3987,12 @@ outcome_pal <- RColorBrewer::brewer.pal(length(levels(type_outcome_joined$outcom
 outcome_pal <- c(outcome_pal, "grey")
 
 #oro_type, outcome_type, data_type, result_effect
-outcome_ggp <- ggplot(type_outcome_joined, aes(x=oro_type, y=weightedSum, fill = outcome_type))+
+outcome_ggp <- ggplot(type_outcome_joined, aes(x=oro_type, y=!!sym(nArticlesMetric), fill = outcome_type))+
   facet_grid(result_effect~data_type, scales = "free_y")+
   geom_col(position="stack")+
   labs(
-    x = "ORO type",
-    y="N articles (weighted)",
+    x = oroTypeTitle,
+    y=nArticlesTitle,
     fill = "Outcome type"
   )+
   scale_fill_manual(
@@ -4369,7 +4307,7 @@ cor.test(all_country_data$governance_indicator, all_country_data$fishery_vulnera
 ```
 
 
-```{r Bivariate map governance indicators ~ vulnerability}
+```{r Bivariate map governance indicators ~ vulnerability -- remove}
 library(R.utils)
 library(tidyr)
 library(stringr)
@@ -4617,12 +4555,14 @@ world_shp <- ne_countries(returnclass = "sf", scale="large")
 
 ## Format data for colour scale
 bivariate_color_scale <- color_bivariate_map(nquantiles  = 10, 
-                                                 bottomright   = "#05A3FC", # rgb(130,0,80, maxColorValue = 255), 
-                                             
-                                                 upperright  = "#9D9F9F", # rgb(255,230,15, maxColorValue = 255),
-                                                 bottomleft  = "#9D9F9F",
-                                             
-                                                 upperleft = "#F60497", # rgb(0,150,235, maxColorValue = 255)  
+                                             # high gov, low vul
+                                                 bottomright   = "#05A3FC", 
+                                             # high vul, high gov
+                                                 upperright  = "#F60497", #"#9D9F9F" "#ffe60f"
+                                             # low vul, low governance
+                                                 bottomleft  =  "#590156" , #"#820050", "#590156"
+                                             # high vul, low governance
+                                                 upperleft = "#ffe60f", # rgb(0,150,235, maxColorValue = 255)  
                                                  ylab        = "Governance indicator",
                                                  xlab        = "Fishery vulnerability")
 
@@ -4631,8 +4571,6 @@ bivariate_color_scale_plt <- bivariate_color_scale |>
     separate(col = group, into = c("group_x", "group_y"), sep = "\\.", convert = TRUE, remove = FALSE)
 
 ggplot(bivariate_color_scale_plt, aes(group_x, group_y,fill=fill))+geom_tile()+scale_fill_identity()
-
-
 
 
 ## Calculate number of articles 
@@ -4708,7 +4646,7 @@ bivar_map_legend <- ggplot2::ggplot() +
     
     ggplot2::labs(x = "Fishery vulnerability", y = "Governance indicator") +
     cowplot::theme_map() +
-    guides(size = guide_legend(title = "# Articles", title.position = "right", title.hjust = 0.5, ncol = 1)) +
+    guides(size = guide_legend(title = "Instances (N)", title.position = "right", title.hjust = 0.5, ncol = 1)) +
     ggplot2::theme(axis.title      = ggplot2::element_text(size = 11), 
                    axis.title.x    = ggplot2::element_text(margin = ggplot2::margin(t = 0,
                                                                                     r = 0,
@@ -4789,7 +4727,7 @@ all_data_map <- try_format_data2map(input_args = list(
 )
 
 # set NA value for fill
-data_map$data$fill[is.na(data_map$data$fill)] <- "grey90"
+data_map$data$fill[is.na(data_map$data$fill)] <- "grey90" 
 all_data_map$data$fill[is.na(all_data_map$data$fill)] <- "grey90"
 
 # Determine which countries should be hatched
@@ -4863,8 +4801,8 @@ gov_fishV_bivar_map_all <- ggplot2::ggplot() +
 ## Format panels with legend
 
 map_bi_all <- cowplot::ggdraw() +
-    cowplot::draw_plot(gov_fishV_bivar_map_all,   x = 0.0, y = 0.35, width = 1, height = 0.6) +
-    cowplot::draw_plot(bivar_map_legend, x = 0.3, y = 0.0, width = 0.4, height = 0.4)
+    cowplot::draw_plot(gov_fishV_bivar_map_all,   x = 0.0, y = 0.32, width = 1, height = 0.6) +
+    cowplot::draw_plot(bivar_map_legend, x = 0.5, y = 0.0, width = 0.32, height = 0.35, hjust=0.5,vjust=0)
 
 
 # save plot
@@ -5191,7 +5129,25 @@ require(glmmTMB)
 require(ggeffects)
 require(sjPlot)
 
-dat_bivar_mod_df <- dat_bivar %>%
+
+dat_bivar <- id_country_data %>%
+  mutate(
+    group_x = cut(
+      fishery_vulnerability,
+      breaks = fv_cuts, quantile(fishery_vulnerability, probs = seq(0, 1, 0.1), na.rm = TRUE),
+      include.lowest = TRUE,
+      labels = FALSE
+    ),
+    group_y = cut(
+      governance_indicator,
+      breaks = quantile(governance_indicator, probs = seq(0, 1, 0.1), na.rm = TRUE),
+      include.lowest = TRUE,
+      labels = FALSE
+    ),
+    group   = paste0(group_x, ".", group_y)
+  ) 
+
+dat_bivar_mod_df <-id_country_data %>%
   group_by(country, governance_indicator, fishery_vulnerability) %>%
   summarise(
     n_articles = n_distinct(id),
@@ -5215,6 +5171,21 @@ if(od$dispersion_ratio > 1 & od$p_value < 0.05){
 
 bivar_mod_sum <- summary(bivar_mod)
 bivar_mod_sum
+#  Family: nbinom2  ( log )
+# Formula:          n_articles ~ governance_indicator + fishery_vulnerability
+# Data: dat_bivar_mod_df
+# 
+#       AIC       BIC    logLik -2*log(L)  df.resid 
+#     146.1     152.5     -69.0     138.1        33 
+# 
+# 
+# Dispersion parameter for nbinom2 family (): 3.47 
+# 
+# Conditional model:
+#                        Estimate Std. Error z value Pr(>|z|)  
+# (Intercept)           -1.092231   1.239488  -0.881   0.3782  
+# governance_indicator   0.468912   0.230827   2.031   0.0422 *
+# fishery_vulnerability  0.006999   0.011334   0.618   0.5369 
 
 r2 <- performance::r2_mcfadden(bivar_mod)
 
@@ -5234,7 +5205,7 @@ gov_ggp <- plot_model(bivar_mod, type = "pred", terms = c("governance_indicator"
             inherit.aes = FALSE, vjust=1, hjust=0,size=3, check_overlap = TRUE)+
   labs(
     x="Governance indicator",
-    y="N articles"
+    y="Instances (N)"
   )+
   theme_minimal(base_size = 9)+
   theme(
@@ -5247,7 +5218,7 @@ vul_ggp <- plot_model(bivar_mod, type = "pred", terms = c("fishery_vulnerability
             inherit.aes = FALSE, vjust=1, hjust=0,size=3, check_overlap = TRUE)+
   labs(
     x="Fishery vulnerability",
-    y="N articles"
+    y="Instances (N)"
   )+
   theme_minimal(base_size = 9)+
   theme(
@@ -5323,7 +5294,7 @@ oroOutcomes <- expand_labels_with_weight(df = studyResults, id_col = article_out
 #     )
 #   )
 
-# Or maybe right now don't worry about result type and just do by publication id and adaptive effect P/A
+# Or don't worry about result type and just do by publication id and adaptive effect P/A
 allIds <- data.frame(id = unique(codedVars$id))
 studyResults_bin <- allIds %>%
   left_join(
@@ -5584,10 +5555,10 @@ combined_gbm_plot <- wrap_plots(gbm_plot_list, ncol = 3) +
   plot_annotation(tag_levels = 'a')
 
 # Save to PDF
-ggsave(here::here("figures/main/gbm_partial_dependence_plots.pdf"),
+ggsave(here::here("figures/supplemental/gbm_partial_dependence_plots.pdf"),
        combined_gbm_plot, width = 12, height = 11)
 
-ggsave(here::here("figures/main/gbm_partial_dependence_plots.png"),
+ggsave(here::here("figures/supplemental/gbm_partial_dependence_plots.png"),
        combined_gbm_plot, width = 12, height = 11, dpi=600)
 
 
@@ -5796,7 +5767,7 @@ combined_gbm_plot <- wrap_plots(gbm_plot_list, ncol = 3) +
   plot_annotation(tag_levels = 'a')
 
 # Save to PDF
-ggsave(here::here("figures/main/gbm_partial_dependence_plots_2.pdf"),
+ggsave(here::here("figures/supplemental/gbm_partial_dependence_plots_2.pdf"),
        combined_gbm_plot, width = 10.5, height = 12)
 
 
@@ -6133,12 +6104,14 @@ for(r in 1:length(resultTypes)){
       ) %>%
       group_by(result_type, result_effect) %>%
       summarise(
+        n_articles = n_distinct(article_outcome_id),
         weightedSum = sum(weight, na.rm = T)
       )%>%
-      complete(result_effect, fill = list(weightedSum = NA)) %>%
+      select(result_type, result_effect, !!sym(nArticlesMetric)) %>%
+      complete(result_effect, fill = setNames(list(NA), nArticlesMetric)) %>%
       pivot_wider(
         names_from = result_effect,
-        values_from = weightedSum
+        values_from = !!sym(nArticlesMetric)
       ) %>%
       mutate(
         Negative = Negative*-1
@@ -6176,7 +6149,7 @@ tradeoff_ggp <- ggplot(resultTradeOffs_df, aes(x=result_type))+
       geom_hline(yintercept = 0)+
       labs(
         x = "Adaptation outcome type",
-        y = "Adaptive outcomes v. trade-off (weighted sum)"
+        y = paste("Adaptive synergies v. trade-offs\n",ifelse(nArticlesMetric == "n_articles","(N instances)","(weighted sum)"))
       )+
       coord_flip(clip = "off")+
       theme_minimal(base_size = 12)
@@ -6222,13 +6195,15 @@ for(r in 1:length(resultTypes)){
         result_effect = factor(result_effect, levels = c("Positive","Negative"))
       ) %>%
       group_by(result_type, result_effect) %>%
-      summarise(
+     summarise(
+        n_articles = n_distinct(article_outcome_id),
         weightedSum = sum(weight, na.rm = T)
       )%>%
-      complete(result_effect, fill = list(weightedSum = NA)) %>%
+      select(result_type, result_effect, !!sym(nArticlesMetric)) %>%
+      complete(result_effect, fill = setNames(list(NA), nArticlesMetric)) %>%
       pivot_wider(
         names_from = result_effect,
-        values_from = weightedSum
+        values_from = !!sym(nArticlesMetric)
       ) %>%
       mutate(
         Negative = Negative*-1
@@ -6255,13 +6230,13 @@ tradeoff_ORO_ggp <- ggplot(resultTradeOffs_ORO_df, aes(x=result_type))+
   geom_rect(aes(x=result_type, width=0.7, ymin = Negative, ymax = 0), fill="#d01c8b")+
   geom_rect(aes(x=result_type, width=0.7, ymin = 0, ymax = Positive), fill="#4dac26")+
   geom_text(data = resultTradeOffs_ORO_df %>% filter(0 < Positive),
-            aes(y=Positive, label = scales::number(Positive, accuracy = 0.1)), hjust=0, size=2.5)+
+            aes(y=Positive, label = scales::number(Positive, accuracy = 1)), hjust=0, size=2.5)+
   geom_text(data = resultTradeOffs_ORO_df %>% filter(Negative < 0),
-            aes(y=Negative, label = scales::number(Negative, accuracy = 0.1)), hjust=1, size=2.5)+
+            aes(y=Negative, label = scales::number(Negative, accuracy = 1)), hjust=1, size=2.5)+
       geom_hline(yintercept = 0)+
       labs(
         x = "Adaptation outcome type",
-        y = "Adaptive outcomes v. trade-off (weighted sum)"
+        y = paste("Adaptive synergies v. trade-offs\n",ifelse(nArticlesMetric == "n_articles","(N instances)","(weighted sum)"))
       )+
       coord_flip(clip = "off")+
       theme_minimal(base_size = 9)
@@ -6271,7 +6246,7 @@ tradeoff_ORO_ggp <- ggplot(resultTradeOffs_ORO_df, aes(x=result_type))+
 tradeoff_ORO_ggp
 
 ggsave(
-  filename = here::here("figures/main/coben_disben_barplots_by_ORO.pdf"),
+  filename = here::here("figures/supplemental/coben_disben_barplots_by_ORO.pdf"),
   tradeoff_ORO_ggp,
   width = 6, height=7.5
 )
