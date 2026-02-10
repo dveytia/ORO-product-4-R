@@ -5915,10 +5915,10 @@ resultTradeOffs_df_uw$positive_result <- factor(
 )
 
 # Calculate N
-sum(resultTradeOffs_df_uw$Positive)+sum(abs(resultTradeOffs_df_uw$Negative)) # 256
+sum(resultTradeOffs_df_uw$Positive)+sum(abs(resultTradeOffs_df_uw$Negative)) # 251
 
 ## model the trade off
-tradeOff_int <- glm(cbind(Positive, abs(Negative))~ positive_result, data = resultTradeOffs_df_uw, family = "binomial")
+tradeOff_int <- glm(cbind(Positive, abs(Negative))~ positive_result + 1, data = resultTradeOffs_df_uw, family = "binomial")
 
 summary(tradeOff_int)
 # Coefficients:
@@ -5931,9 +5931,11 @@ summary(tradeOff_int)
 
 # Test if the outcome dimension is significant -- yes
 drop1(tradeOff_int, test="Chisq")
-#                 Df Deviance    AIC    LRT Pr(>Chi)   
-# <none>               161.51 205.16                   
-# positive_result  3   173.00 210.65 11.486 0.009367 **
+# cbind(Positive, abs(Negative)) ~ positive_result
+#                 Df Deviance    AIC    LRT Pr(>Chi)  
+# <none>               149.05 192.70                  
+# positive_result  3   158.33 195.98 9.2821  0.02577 *
+
 
 print(paste("Having a synergy is", 
             scales::number(exp(coef(tradeOff_int)[1]), 0.01),
@@ -6001,8 +6003,8 @@ for(r in 1:length(resultTypes)){
 }
 } # end ids
 resultTradeOffs_df_uw_o$positive_result <- factor(
-  as.character(resultTradeOffs_df_uw$positive_result),
-  levels = levels(resultTradeOffs_df_uw$result_type)
+  as.character(resultTradeOffs_df_uw_o$positive_result),
+  levels = levels(resultTradeOffs_df_uw_o$result_type)
 )
 
 # sample size
@@ -6015,20 +6017,20 @@ tradeOff_int_o <- glm(cbind(Positive, abs(Negative))~ positive_result + oro_type
 
 summary(tradeOff_int_o)
 
-## Nothing significant except intercept and outcome dimension
+## Nothing significant 
 # Coefficients:
-#                                         Estimate Std. Error z value Pr(>|z|)   
-# (Intercept)                               3.1963     1.0523   3.037  0.00239 **
-# positive_resultEconomic                  -1.5766     0.8083  -1.951  0.05111 . 
-# positive_resultManagement                -1.3221     1.0936  -1.209  0.22668   
-# positive_resultSocial                    -1.6524     0.7819  -2.113  0.03457 * 
-# oro_typeDisaster response technologies   -0.3867     1.3767  -0.281  0.77881   
-# oro_typeEconomic                         -0.7412     0.8970  -0.826  0.40866   
-# oro_typeFisheries management             -0.4641     0.8978  -0.517  0.60523   
-# oro_typeFishing technologies             14.7142  1164.8606   0.013  0.98992   
-# oro_typeOcean governance                 -0.2724     0.9005  -0.303  0.76226   
-# oro_typeSocio-behavioural                -0.9225     0.8505  -1.085  0.27804   
-# oro_typeSoft infrastructure               0.3207     1.0806   0.297  0.76663 
+#                                         Estimate Std. Error z value Pr(>|z|)
+# (Intercept)                               1.8742     1.1492   1.631    0.103
+# positive_resultEconomic                  -0.2545     0.8923  -0.285    0.775
+# positive_resultSocial                    -0.3303     0.8675  -0.381    0.703
+# positive_resultEcological                 1.3221     1.0936   1.209    0.227
+# oro_typeDisaster response technologies   -0.3867     1.3767  -0.281    0.779
+# oro_typeEconomic                         -0.7412     0.8970  -0.826    0.409
+# oro_typeFisheries management             -0.4641     0.8978  -0.517    0.605
+# oro_typeFishing technologies             14.7142  1164.8606   0.013    0.990
+# oro_typeOcean governance                 -0.2724     0.9005  -0.303    0.762
+# oro_typeSocio-behavioural                -0.9225     0.8505  -1.085    0.278
+# oro_typeSoft infrastructure               0.3207     1.0806   0.297    0.767
 
 
 
@@ -6036,7 +6038,7 @@ drop1(tradeOff_int_o, test = "Chisq")
 #                 Df Deviance    AIC    LRT Pr(>Chi)  
 # <none>               116.05 161.83                  
 # positive_result  3   122.56 162.33 6.5043  0.08949 .
-# oro_type         7   121.70 153.48 5.6495  0.58122
+# oro_type         7   121.70 153.48 5.6495  0.58122 
 
 ```
 
@@ -6168,7 +6170,174 @@ ggsave(
 
 ```
 
+```{r inverse barplot of when outcome is negative are there other side effects}
+# calculate outcomes
+oroOutcomes <- expand_labels_with_weight(df = studyResults, id_col = article_outcome_id, list_col = oro_type) %>%
+  left_join(studyResults %>% select(id, article_outcome_id,result_type, result_effect)) %>%
+  left_join(codedVars %>% select(id, evidence_type), by = "id") %>%
+  rename(
+    oro_type = label
+  ) %>%
+  mutate(
+    oro_type = factor(
+      oro_type,
+      levels = oroTypeAes$levels
+    ),
+    evidence_type = factor(
+      evidence_type,
+      levels=c("Quantitative metric","Social empirical","Qualitative - other")
+    )
+  )
 
+tradeOffs <- expand_labels_with_weight(df = oroOutcomes, id_col = article_outcome_id, list_col = result_type) %>%
+  left_join(oroOutcomes %>% select(article_outcome_id, id, oro_type, evidence_type, result_effect, weight) %>% rename(oro_weight = weight),
+            relationship = "many-to-many") %>%
+  rename(
+    result_type = label,
+    result_type_weight = weight
+  ) %>%
+  mutate(
+    weight = oro_weight*result_type_weight,
+    result_type = factor(
+      result_type,
+      levels = c("Management","Economic","Social","Ecological")
+    )
+  ) 
+  # group_by(
+  #   result_type, oro_type, result_effect
+  # ) %>%
+  # summarise(
+  #   weightedSum = sum(weight, na.rm = T)
+  # )
+
+resultTypes <- levels(tradeOffs$result_type)
+oros <- levels(tradeOffs$oro_type)
+resultDisben_df <- data.frame()
+for(r in 1:length(resultTypes)){
+  # for(o in 1:length(oros)){
+    posIds <- tradeOffs %>%
+      filter(result_type == resultTypes[r], #oro_type == oros[o], 
+             result_effect=="Negative")
+    posIds <- unique(posIds$id)
+    
+    dfTemp <- tradeOffs %>%
+      filter(id %in% posIds, 
+             result_type != resultTypes[r],# oro_type == oros[o], 
+             result_effect!="Neutral")
+    if(nrow(dfTemp) < 1){
+      next
+    }
+    dfTemp<- dfTemp%>%
+      mutate(
+        result_effect = factor(result_effect, levels = c("Positive","Negative"))
+      ) %>%
+      group_by(result_type, result_effect) %>%
+      summarise(
+        n_articles = n_distinct(article_outcome_id),
+        weightedSum = sum(weight, na.rm = T)
+      )%>%
+      select(result_type, result_effect, !!sym(nArticlesMetric)) %>%
+      complete(result_effect, fill = setNames(list(NA), nArticlesMetric)) %>%
+      pivot_wider(
+        names_from = result_effect,
+        values_from = !!sym(nArticlesMetric)
+      ) %>%
+      mutate(
+        Negative = Negative*-1
+      )%>%
+      replace_na(list(Positive = 0, Negative = 0))%>%
+      mutate(
+        # oro_type = oros[o],
+        negative_result = resultTypes[r]
+      )
+    
+    resultDisben_df <- resultDisben_df %>%
+      bind_rows(dfTemp)
+    
+  # }
+}
+resultDisben_df$negative_result <- factor(
+  as.character(resultDisben_df$negative_result),
+  levels = levels(resultDisben_df$result_type)
+)
+
+
+
+disben_ggp <- ggplot(resultDisben_df, aes(x=result_type))+
+  facet_wrap( ~ negative_result, nrow = 1)+
+  scale_y_continuous(expand = expansion(mult=c(0.15,0.15)))+
+  scale_x_discrete(
+    limits = rev(levels(resultDisben_df$result_type))
+  )+
+  geom_rect(aes(x=result_type, width=0.7, ymin = Negative, ymax = 0), fill="#d01c8b")+
+  geom_rect(aes(x=result_type, width=0.7, ymin = 0, ymax = Positive), fill="#4dac26")+
+  geom_text(data = resultDisben_df %>% filter(0 < Positive),
+            aes(y=Positive, label = Positive), hjust=0, size=3)+
+  geom_text(data = resultDisben_df %>% filter(Negative < 0),
+            aes(y=Negative, label = Negative), hjust=1, size=3)+
+      geom_hline(yintercept = 0)+
+      labs(
+        x = "Maladaptation outcome type",
+        y = paste("Adaptive trade-offs v. dis-benefits  \n", ifelse(nArticlesMetric == "n_articles","(N instances)","(weighted sum)"))
+      )+
+      coord_flip(clip = "off")+
+      theme_minimal(base_size = 12)
+  # theme(
+  #   plot.margin = unit(c(rep(0.2,4)), "cm")
+  # )
+disben_ggp
+
+ggsave(
+  filename = here::here("figures/main/disben_barplots.pdf"),
+  disben_ggp,
+  width = 7, height=4
+)
+
+
+
+```
+
+```{r print the ids which have negative ecological and other negative}
+posIds <- tradeOffs %>%
+filter(result_type == "Ecological", 
+       result_effect=="Negative")
+posIds <- unique(posIds$id)
+
+dfTemp <- tradeOffs %>%
+  filter(id %in% posIds, 
+         result_type != "Ecological",# oro_type == oros[o], 
+         result_effect=="Negative")
+
+## Join with some metadata
+dbcon <-RSQLite::dbConnect(RSQLite::SQLite(), 
+                           dbname = here::here("data/raw-data/safe_fish.sqlite"),
+                           create=FALSE)
+relevantdedups <- tbl(dbcon, "relevantdedups_p4") %>%
+  collect()
+
+RSQLite::dbDisconnect(dbcon)
+
+
+
+dfTemp <- dfTemp %>%
+  left_join(
+    relevantdedups %>% select(id = analysis_id, title, year, doi),
+    by = "id"
+  ) 
+
+# Print the unique articles
+dfTemp %>%
+  distinct(id, title, year, doi) %>% View
+#       id title                                                                                                     year 
+
+#    <dbl> <chr>                                                                                                     <chr>
+# 1     85 Adaptation to coastal hazards: the livelihood struggles of a fishing community in Kerala, India           2015 
+# 2   1678 Lagged social-ecological responses to climate and range shifts in fisheries                               2012 
+# 3   5171 Adapting to the Inevitable: The Case of Tanbi Wetland National Park, The Gambia                           2016 
+# 4   5395 Adaptive capacity of small-scale coastal fishers to climate and non-climate stressors in the Western reg… 2019 
+# 5 155038 Building food security and resilience into fisheries governance in the Eastern Caribbean                  2015 
+# 6 247475 From typhoons to traders: the role of patron-client relations in mediating fishery responses to natural … 2019 
+```
 
 
 ```{r trade offs by ORO}
