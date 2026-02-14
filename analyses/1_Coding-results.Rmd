@@ -5250,6 +5250,148 @@ write.csv(
 ```
 
 
+# Bangledesh research
+
+```{r}
+
+bangladesh_ids <- codedVars %>%
+  filter(grepl("Bangladesh", country, ignore.case=T))
+
+print(paste(
+  "There are", length(unique(bangladesh_ids$id)), 
+  "articles in Bangladesh, out of", length(unique(codedVars$id)), "articles",
+  ", totalling", scales::number(length(unique(bangladesh_ids$id))/length(unique(codedVars$id))*100, accuracy=0.1),"%"
+))
+# "There are 9 articles in Bangladesh, out of 79 articles , totalling 11.4 %"
+
+
+## as a percentage of Local scale
+print(paste(
+  sum(grepl("Local", bangladesh_meta$spatial_scale)),"of", length(unique(bangladesh_ids$id)),
+  "articles in Bangladesh are local-scale, which comprises",
+  sum(grepl("Local", bangladesh_meta$spatial_scale))/sum(grepl("Local", codedVars$spatial_scale))*100,"%",
+  "of all local-scale articles (N=",sum(grepl("Local", codedVars$spatial_scale)),")"
+))
+# "9 of 9 articles in Bangladesh are local-scale, which comprises 15 % of all local-scale articles (N= 60 )"
+
+## Time scale
+table(bangladesh_meta$time_scale)
+         # > 10 years   1 year <= 5 years 5 years <= 10 years                None 
+         #          2                   2                   1                   4 
+
+## Get the metadata for these articles
+dbcon <-RSQLite::dbConnect(RSQLite::SQLite(), 
+                           dbname = here::here("data/raw-data/safe_fish.sqlite"),
+                           create=FALSE)
+
+# Metadata for articles conducted IN Bangladesh
+bangladesh_meta <- tbl(dbcon, "relevantdedups_p4") %>%
+  collect() %>%
+  select(id = analysis_id, title, author, affiliation, year, doi) %>%
+  right_join(bangladesh_ids, by = "id")
+
+# Bangladesh affiliations
+bangladesh_aff <- tbl(dbcon, "relevantdedups_p4") %>%
+  collect() %>%
+  select(id = analysis_id, title, author, affiliation, year, doi) %>%
+  filter(grepl("bangladesh", affiliation, ignore.case=T)) %>%
+  inner_join(codedVars, by="id")
+
+
+print(paste("There are", sum(!(bangladesh_aff$id %in% bangladesh_meta$id)),
+            "studies conducted by Bangladesh affiliations in countries outside Bangladesh"))
+# "There are 0 studies conducted by Bangladesh affiliations in countries outside Bangladesh"
+
+
+print(paste(
+  "Of the", length(unique(bangladesh_ids$id)), "articles conducted in Bangladesh",
+  sum(grepl("bangladesh", bangladesh_meta$affiliation, ignore.case = TRUE)),
+  "have Bangladesh affiliated authors"
+))
+# "Of the 9 articles conducted in Bangladesh 7 have Bangladesh affiliated authors"
+
+
+## Collaboration network analysis
+library(bibliometrix)
+
+bang_mat <- bangladesh_meta %>%
+  select(AU = author, C1 = affiliation, PY = year, UT=id) %>%
+  mutate(
+    AU = gsub(",", " ", AU),
+    AU = gsub("\\s+", " ", AU),
+    AU = gsub(",", ";", AU),
+    SR = paste0("WOS:", row_number()),
+    TI = NA,
+    SO = NA,
+    DB = "wos",
+    DT = "ARTICLE"
+    # across(where(is.character), stringr::str_to_upper)
+  ) 
+class(bang_mat) <- c("bibliometrixDB", "data.frame")
+
+# get countries
+## Get list of countries and codes
+countries_ls <- data.frame(name_en = countrycode::codelist$country.name.en) %>%
+  mutate(country_iso = countrycode::countrycode(sourcevar   = name_en,
+                                       origin      = "country.name",
+                                       destination = "iso3c"),
+         country=name_en)
+
+
+## Extract countries from affiliation
+source(here::here("R", "functions_to_format.R"))
+
+bang_mat$AU_CO <- as.character(gsub(", ",";",unlist(extract_all_affiliation(bang_mat$C1, countries_ls))))
+bang_mat <- as.data.frame(bang_mat)
+
+NetMatrix <- biblioNetwork(bang_mat, analysis = "collaboration", network = "countries", sep=";")
+
+
+## Plot collaboration matrix of Bangladesh research
+require(igraph)
+require(ggraph)
+g <- graph_from_adjacency_matrix(NetMatrix,
+                                 mode = "undirected",
+                                 weighted = TRUE,
+                                 diag = FALSE)
+
+
+g <- graph_from_adjacency_matrix(NetMatrix,
+                                 mode = "undirected",
+                                 weighted = TRUE,
+                                 diag = FALSE)
+
+set.seed(123)
+
+bangladesh_colabs_ggp <- ggraph(g, layout = "fr") +
+  geom_edge_link(aes(width = weight),
+                 alpha = 0.4,
+                 colour = "gray50") +
+  geom_node_point(aes(size = strength(g)),
+                  colour = "steelblue") +
+  geom_node_text(aes(label = name),
+                 repel = TRUE,
+                 size = 3) +
+  
+  scale_edge_width(name = "N collaborations",
+                 breaks = function(x) unique(round(pretty(x)))) +
+  scale_size_continuous(name = "N papers",
+                      breaks = c(1,3,5,7))+
+
+  theme_void() +
+  # ggtitle("Country Collaboration Network") +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold")
+  )
+
+
+ggsave(
+  here::here("figures/supplemental/bangladesh_colab_countries.pdf"),
+  width = 5, height=4, units="in",
+  plot = bangladesh_colabs_ggp
+)
+```
+
 # Outcomes
 
 Model is biased to pick up more positive effects, so not sure how good the finding is that there are less negative...
