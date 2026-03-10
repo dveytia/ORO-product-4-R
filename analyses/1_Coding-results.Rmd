@@ -2063,117 +2063,117 @@ type_spatial_scale_joined <- reshape2::melt(type_spatial_scale_joined,
   )
 
 
-# Make my own special color scale
-type_spatial_scale_joined_n <- type_spatial_scale_joined%>%
-                              filter(Metric == nArticlesTitle) %>%
-  mutate(
-    Value_cut = cut(Value, 
-                     breaks = pretty(type_spatial_scale_joined$Value,n = 8)),
-    label = droplevels(label))
+# # Make my own special color scale
+# type_spatial_scale_joined_n <- type_spatial_scale_joined%>%
+#                               filter(Metric == nArticlesTitle) %>%
+#   mutate(
+#     Value_cut = cut(Value, 
+#                      breaks = pretty(type_spatial_scale_joined$Value,n = 8)),
+#     label = droplevels(label))
 
 
 
-# Specific per-oro col pal
-oros <- levels(type_spatial_scale_joined_n$oro_type)
-cut_breaks <- levels(type_spatial_scale_joined_n$Value_cut)
-n_cuts <- length(cut_breaks)
+# # Specific per-oro col pal
+# oros <- levels(type_spatial_scale_joined_n$oro_type)
+# cut_breaks <- levels(type_spatial_scale_joined_n$Value_cut)
+# n_cuts <- length(cut_breaks)
 
-col_lookup <- data.frame(
-  oro_type = rep(oroTypeAes$levels, n_cuts) %>% sort(),
-  Value_cut = rep(cut_breaks, length(oros)),
-  my_color = rep(NA, n_cuts*length(oros))
-) %>%
-  mutate(oro_type = factor(oro_type, levels = oroTypeAes$levels),
-         Value_cut = factor(Value_cut, levels = cut_breaks)) %>%
-  arrange(oro_type, Value_cut) %>%
-  left_join(oroTypeAes %>% select(levels, branch),
-            by = c("oro_type"="levels"))
+# col_lookup <- data.frame(
+#   oro_type = rep(oroTypeAes$levels, n_cuts) %>% sort(),
+#   Value_cut = rep(cut_breaks, length(oros)),
+#   my_color = rep(NA, n_cuts*length(oros))
+# ) %>%
+#   mutate(oro_type = factor(oro_type, levels = oroTypeAes$levels),
+#          Value_cut = factor(Value_cut, levels = cut_breaks)) %>%
+#   arrange(oro_type, Value_cut) %>%
+#   left_join(oroTypeAes %>% select(levels, branch),
+#             by = c("oro_type"="levels"))
 
-require(scales)
-require(colorspace)
-for(o in 1:length(oros)){
-  ind <- which(col_lookup$oro_type == oros[o])
-  ind <- ind[order(col_lookup$Value_cut[ind])]
-  oro_branch <- oroTypeAes$branch[oroTypeAes$levels == oros[o]]
-  branch_cols <- oroTypeAes$col[oroTypeAes$branch == oro_branch]
-  start_col <- lighten(branch_cols[2], amount = 0.8)
-  end_col <- darken(branch_cols[1], amount=0.5)
-  scales::show_col(c(start_col, end_col))
+# require(scales)
+# require(colorspace)
+# for(o in 1:length(oros)){
+#   ind <- which(col_lookup$oro_type == oros[o])
+#   ind <- ind[order(col_lookup$Value_cut[ind])]
+#   oro_branch <- oroTypeAes$branch[oroTypeAes$levels == oros[o]]
+#   branch_cols <- oroTypeAes$col[oroTypeAes$branch == oro_branch]
+#   start_col <- lighten(branch_cols[2], amount = 0.8)
+#   end_col <- darken(branch_cols[1], amount=0.5)
+#   scales::show_col(c(start_col, end_col))
   
-  col_lookup$my_color[ind] <- pal_seq_gradient(start_col, end_col)(seq(from=0,to=1, length.out = length(ind)))
-}  
+#   col_lookup$my_color[ind] <- pal_seq_gradient(start_col, end_col)(seq(from=0,to=1, length.out = length(ind)))
+# }  
 
-# Match color scale to the value
-type_spatial_scale_joined_n <- type_spatial_scale_joined_n %>%
-  left_join(col_lookup, by = c("oro_type","Value_cut"))
+# # Match color scale to the value
+# type_spatial_scale_joined_n <- type_spatial_scale_joined_n %>%
+#   left_join(col_lookup, by = c("oro_type","Value_cut"))
 
-# make legend
-spat_scale_leg <- ggplot(col_lookup %>%
-                           distinct(branch, Value_cut, my_color) %>%
-                           mutate(branch = factor(branch, 
-                                                  levels = c(
-                                                    "Socio-institutional",
-                                                    "Technology",
-                                                    "Infrastructure"
-                                                  ))),
-                         aes(x=Value_cut, y=branch, fill = my_color))+
-  geom_tile()+
-  scale_fill_identity()+
-  geom_text(
-    data= data.frame(
-      x = seq(0.5, length.out = n_cuts+1, by=1),
-      labels = pretty(type_spatial_scale_joined_n$Value,n = 8)
-    ),
-    aes(x=x, label = labels), y=0, inherit.aes = FALSE
-  )+
-  labs(
-    title = "N articles (weighted)",
-    y=""
-  )+
-  coord_fixed(clip = "off")+
-  theme_minimal(base_size = 10)+
-  theme(
-    axis.text.x = element_blank(),
-    axis.title.x = element_blank(),
-    axis.ticks = element_blank()
-  )
-spat_scale_leg
+# # make legend
+# spat_scale_leg <- ggplot(col_lookup %>%
+#                            distinct(branch, Value_cut, my_color) %>%
+#                            mutate(branch = factor(branch, 
+#                                                   levels = c(
+#                                                     "Socio-institutional",
+#                                                     "Technology",
+#                                                     "Infrastructure"
+#                                                   ))),
+#                          aes(x=Value_cut, y=branch, fill = my_color))+
+#   geom_tile()+
+#   scale_fill_identity()+
+#   geom_text(
+#     data= data.frame(
+#       x = seq(0.5, length.out = n_cuts+1, by=1),
+#       labels = pretty(type_spatial_scale_joined_n$Value,n = 8)
+#     ),
+#     aes(x=x, label = labels), y=0, inherit.aes = FALSE
+#   )+
+#   labs(
+#     title = "N articles (weighted)",
+#     y=""
+#   )+
+#   coord_fixed(clip = "off")+
+#   theme_minimal(base_size = 10)+
+#   theme(
+#     axis.text.x = element_blank(),
+#     axis.title.x = element_blank(),
+#     axis.ticks = element_blank()
+#   )
+# spat_scale_leg
 
-# Plot with unique color scale
-spatial_scale_ggp <- ggplot(type_spatial_scale_joined_n %>%
-                              mutate(text_color = ifelse(Value > 15,"white","black")), 
-                            aes(y=label, x=oro_type, fill = my_color))+
-  geom_tile()+
-  scale_fill_identity(guide=FALSE)+
-  scale_color_identity(guide=FALSE)+
-  scale_y_discrete(
-    limits = rev(levels(type_spatial_scale_joined_n$label)[
-      levels(type_spatial_scale_joined_n$label) != "None"
-    ])
-  )+
-  # scale_fill_distiller(palette = "Blues", direction=1)+
-  geom_text(
-    aes(label = scales::number(Value, accuracy = 0.1), color = text_color),
-    size = 3
-  )+
-  coord_cartesian(clip="off")+
-  labs(
-    y = "Spatial scale",
-    x = "Option type"
-  )+
-  theme_bw(base_size = 12)+
-  theme(
-    axis.text.x = element_text(angle=45, hjust=1),
-    axis.line.y = element_line(arrow = grid::arrow(length = unit(0.3, "cm"), 
-                                                       ends = "first", type = "closed")),
-    axis.ticks.y = element_blank(),
-    panel.grid = element_blank(),
-    panel.border = element_blank(),
-    plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
-  )
+# # Plot with unique color scale
+# spatial_scale_ggp <- ggplot(type_spatial_scale_joined_n %>%
+#                               mutate(text_color = ifelse(Value > 15,"white","black")), 
+#                             aes(y=label, x=oro_type, fill = my_color))+
+#   geom_tile()+
+#   scale_fill_identity(guide=FALSE)+
+#   scale_color_identity(guide=FALSE)+
+#   scale_y_discrete(
+#     limits = rev(levels(type_spatial_scale_joined_n$label)[
+#       levels(type_spatial_scale_joined_n$label) != "None"
+#     ])
+#   )+
+#   # scale_fill_distiller(palette = "Blues", direction=1)+
+#   geom_text(
+#     aes(label = scales::number(Value, accuracy = 0.1), color = text_color),
+#     size = 3
+#   )+
+#   coord_cartesian(clip="off")+
+#   labs(
+#     y = "Spatial scale",
+#     x = "Option type"
+#   )+
+#   theme_bw(base_size = 12)+
+#   theme(
+#     axis.text.x = element_text(angle=45, hjust=1),
+#     axis.line.y = element_line(arrow = grid::arrow(length = unit(0.3, "cm"), 
+#                                                        ends = "first", type = "closed")),
+#     axis.ticks.y = element_blank(),
+#     panel.grid = element_blank(),
+#     panel.border = element_blank(),
+#     plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
+#   )
 
 
-spatial_scale_ggp
+# spatial_scale_ggp
 
 
 # Plot with normal color scale
@@ -2185,6 +2185,7 @@ branch_cols <- oroTypeAes %>%
   slice(1) %>%
   pull(col)
 
+arrow_linewidth = 1.25
 
 spatial_scale_ggp <- ggplot(type_spatial_scale_joined_n %>%
                               mutate(text_color = ifelse(Value > 15,"white","black")), 
@@ -2231,9 +2232,11 @@ spatial_scale_ggp <- ggplot(type_spatial_scale_joined_n %>%
   theme_bw(base_size = 12)+
   theme(
     legend.position = "bottom",
+    axis.title = element_text(size = 14, face = "bold"),
     axis.text.x = element_text(angle=45, hjust=1),
-    axis.line.y = element_line(arrow = grid::arrow(length = unit(0.3, "cm"), 
-                                                       ends = "first", type = "closed")),
+    axis.line.y = element_line(arrow = grid::arrow(length = unit(0.3, "cm"),
+                                                       ends = "first", type = "closed"),
+                              linewidth = arrow_linewidth),
     axis.ticks.y = element_blank(),
     panel.grid = element_blank(),
     panel.border = element_blank(),
@@ -2272,6 +2275,7 @@ spatial_scale_bar_ggp <- ggplot(type_spatial_scale_joined_n,
   theme(
     legend.position = "none",
     axis.text.x = element_text(angle=45, hjust=1),
+    axis.title = element_text(size = 14, face = "bold"),
     plot.margin = unit(c(0.2, 0.5, 1, 1.5), units = "cm")
   )
 
@@ -2386,13 +2390,15 @@ time_scale_ggp <- ggplot(
     fill = oroTypeTitle
   )+
   theme(
+    axis.title = element_text(size = 14, face = "bold"),
     axis.text.y = element_blank(),
     axis.ticks.y = element_blank(),
     axis.text.x = element_blank(),
     axis.ticks.x = element_blank(),
     panel.background = element_blank(),
     axis.line.y = element_line(arrow = grid::arrow(length = unit(0.3, "cm"), 
-                                                       ends = "first", type = "closed")),
+                                                       ends = "first", type = "closed"),
+                              linewidth = arrow_linewidth),
     legend.position = "bottom",
     plot.margin = unit(rep(10,4), "pt")
   )
@@ -2530,13 +2536,15 @@ governance_ggp <- ggplot(
     fill = oroTypeTitle
   )+
   theme(
+    axis.title = element_text(size = 14, face = "bold"),
     axis.text.y = element_blank(),
     axis.ticks.y = element_blank(),
     axis.text.x = element_blank(),
     axis.ticks.x = element_blank(),
     panel.background = element_blank(),
     axis.line.y = element_line(arrow = grid::arrow(length = unit(0.3, "cm"), 
-                                                       ends = "last", type = "closed")),
+                                                       ends = "last", type = "closed"),
+                              linewidth = arrow_linewidth),
     legend.position = "bottom",
     legend.margin = margin(r=-5, l=-5,t=0,b=0, unit = "pt"),
     plot.margin = unit(rep(10,4), "pt")
@@ -2557,22 +2565,32 @@ patch_layout <- "
 ABC
 ADD
 "
- 
+tag_size = 16
+
 plotList = list(
-  free(spatial_scale_ggp+
-    ggtitle("a.")+
-    theme(plot.margin = unit(rep(0.5,4), units="cm"))), 
+  free(
+    spatial_scale_ggp+
+    labs(tag="a.")+
+    theme(
+      plot.margin = unit(rep(0.5,4), units="cm"),
+      plot.tag = element_text(size=tag_size, face="bold")
+      )
+      ), 
   # spat_scale_leg+theme(plot.margin = unit(rep(0.2,4), units="cm")),
   time_scale_ggp+
-    ggtitle("b.")+
+    labs(tag="b.")+
     theme(legend.position = "none", 
           # axis.title.x = element_text(margin = margin(t=-100, unit="pt")),
-          plot.margin = unit(rep(0.5,4), units="cm")),
+          plot.margin = unit(rep(0.5,4), units="cm"),
+          plot.tag = element_text(size=tag_size, face="bold")
+          ),
   governance_ggp+
-    ggtitle("c.")+
+    labs(tag="c.")+
     theme(legend.position = "none", 
           # axis.title.x = element_text(margin = margin(t=-100, unit="pt")),
-          plot.margin = unit(rep(0.5,4), units = "cm")),
+          plot.margin = unit(rep(0.5,4), units = "cm"),
+          plot.tag = element_text(size=tag_size, face="bold")
+    ),
   free(oro_legend_ggp+ theme(plot.margin = unit(c(0,0,2,0), units="cm")))
   )
 
