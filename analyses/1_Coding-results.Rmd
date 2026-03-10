@@ -3643,7 +3643,7 @@ ggsave(
 
 
 ## Write dashboard plots for each dimension category seperately and save as svg -----------
-savePlot = FALSE
+savePlot = TRUE
 categories <- levels(dashboard_df$category)
 plot_icons <- c(
   "governance_icon.svg","law_icon.svg","spatial_icon.svg","time_icon.svg"
@@ -3654,7 +3654,7 @@ oro_context_dashboard_ggp_list <- list()
 
 for(i in 1:length(categories)){
     cat <- categories[i]
-    icon_use <- magick::image_read_svg(plot_icons[i])
+    icon_use <- magick::image_read_svg(plot_icons[i], width = 300, height = 300)
     
     tmp_dat <- dashboard_df %>% filter(category == cat)
     tmp_plot <- ggplot(tmp_dat, aes(x = oro_type, y = axis_rank, fill = oro_type)) +

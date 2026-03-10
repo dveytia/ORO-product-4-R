@@ -26,22 +26,23 @@
   </clipPath>
 </defs>
 <g clip-path='url(#cpMC4wMHwyODguMDB8MC4wMHwxMDguMDA=)'>
-<rect x='12.82' y='28.09' width='15.86' height='15.86' style='stroke-width: 1.07; stroke: #FFFFFF; stroke-linecap: butt; stroke-linejoin: miter; fill: #1F77B4;' />
-<rect x='12.82' y='45.37' width='15.86' height='15.86' style='stroke-width: 1.07; stroke: #FFFFFF; stroke-linecap: butt; stroke-linejoin: miter; fill: #4E91C0;' />
-<rect x='12.82' y='62.65' width='15.86' height='15.86' style='stroke-width: 1.07; stroke: #FFFFFF; stroke-linecap: butt; stroke-linejoin: miter; fill: #76ADD0;' />
-<rect x='12.82' y='79.93' width='15.86' height='15.86' style='stroke-width: 1.07; stroke: #FFFFFF; stroke-linecap: butt; stroke-linejoin: miter; fill: #A6C8E2;' />
-<rect x='130.14' y='28.09' width='15.86' height='15.86' style='stroke-width: 1.07; stroke: #FFFFFF; stroke-linecap: butt; stroke-linejoin: miter; fill: #2CA02C;' />
-<rect x='130.14' y='45.37' width='15.86' height='15.86' style='stroke-width: 1.07; stroke: #FFFFFF; stroke-linecap: butt; stroke-linejoin: miter; fill: #71C671;' />
-<rect x='130.14' y='62.65' width='15.86' height='15.86' style='stroke-width: 1.07; stroke: #FFFFFF; stroke-linecap: butt; stroke-linejoin: miter; fill: #FF7F0E;' />
-<rect x='130.14' y='79.93' width='15.86' height='15.86' style='stroke-width: 1.07; stroke: #FFFFFF; stroke-linecap: butt; stroke-linejoin: miter; fill: #FCB87C;' />
-<text x='34.88' y='39.17' style='font-size: 8.80px; font-family: "Arial";' textLength='74.33px' lengthAdjust='spacingAndGlyphs'>Ocean governance</text>
-<text x='34.88' y='56.45' style='font-size: 8.80px; font-family: "Arial";' textLength='89.45px' lengthAdjust='spacingAndGlyphs'>Fisheries management</text>
-<text x='34.88' y='73.73' style='font-size: 8.80px; font-family: "Arial";' textLength='38.64px' lengthAdjust='spacingAndGlyphs'>Economic</text>
-<text x='34.88' y='91.01' style='font-size: 8.80px; font-family: "Arial";' textLength='70.41px' lengthAdjust='spacingAndGlyphs'>Socio-behavioural</text>
-<text x='152.19' y='39.17' style='font-size: 8.80px; font-family: "Arial";' textLength='80.19px' lengthAdjust='spacingAndGlyphs'>Fishing technologies</text>
-<text x='152.19' y='56.45' style='font-size: 8.80px; font-family: "Arial";' textLength='122.72px' lengthAdjust='spacingAndGlyphs'>Disaster response technologies</text>
-<text x='152.19' y='73.73' style='font-size: 8.80px; font-family: "Arial";' textLength='70.84px' lengthAdjust='spacingAndGlyphs'>Built infrastructure</text>
-<text x='152.19' y='91.01' style='font-size: 8.80px; font-family: "Arial";' textLength='69.38px' lengthAdjust='spacingAndGlyphs'>Soft infrastructure</text>
+<text x='144.00' y='13.49' text-anchor='middle' style='font-size: 14.00px; font-weight: bold; font-family: "Arial";' textLength='157.03px' lengthAdjust='spacingAndGlyphs'>Adaptation intervention</text>
+<rect x='-37.67' y='21.24' width='15.86' height='15.86' style='stroke-width: 1.07; stroke: #FFFFFF; stroke-linecap: butt; stroke-linejoin: miter; fill: #1F77B4;' />
+<rect x='-37.67' y='43.99' width='15.86' height='15.86' style='stroke-width: 1.07; stroke: #FFFFFF; stroke-linecap: butt; stroke-linejoin: miter; fill: #4E91C0;' />
+<rect x='-37.67' y='66.75' width='15.86' height='15.86' style='stroke-width: 1.07; stroke: #FFFFFF; stroke-linecap: butt; stroke-linejoin: miter; fill: #76ADD0;' />
+<rect x='-37.67' y='89.51' width='15.86' height='15.86' style='stroke-width: 1.07; stroke: #FFFFFF; stroke-linecap: butt; stroke-linejoin: miter; fill: #A6C8E2;' />
+<rect x='122.98' y='21.24' width='15.86' height='15.86' style='stroke-width: 1.07; stroke: #FFFFFF; stroke-linecap: butt; stroke-linejoin: miter; fill: #2CA02C;' />
+<rect x='122.98' y='43.99' width='15.86' height='15.86' style='stroke-width: 1.07; stroke: #FFFFFF; stroke-linecap: butt; stroke-linejoin: miter; fill: #71C671;' />
+<rect x='122.98' y='66.75' width='15.86' height='15.86' style='stroke-width: 1.07; stroke: #FFFFFF; stroke-linecap: butt; stroke-linejoin: miter; fill: #FF7F0E;' />
+<rect x='122.98' y='89.51' width='15.86' height='15.86' style='stroke-width: 1.07; stroke: #FFFFFF; stroke-linecap: butt; stroke-linejoin: miter; fill: #FCB87C;' />
+<text x='-15.62' y='33.82' style='font-size: 13.00px; font-family: "Arial";' textLength='109.89px' lengthAdjust='spacingAndGlyphs'>Ocean governance</text>
+<text x='-15.62' y='56.58' style='font-size: 13.00px; font-family: "Arial";' textLength='132.27px' lengthAdjust='spacingAndGlyphs'>Fisheries management</text>
+<text x='-15.62' y='79.34' style='font-size: 13.00px; font-family: "Arial";' textLength='57.09px' lengthAdjust='spacingAndGlyphs'>Economic</text>
+<text x='-15.62' y='102.10' style='font-size: 13.00px; font-family: "Arial";' textLength='104.11px' lengthAdjust='spacingAndGlyphs'>Socio-behavioural</text>
+<text x='145.03' y='33.82' style='font-size: 13.00px; font-family: "Arial";' textLength='118.56px' lengthAdjust='spacingAndGlyphs'>Fishing technologies</text>
+<text x='145.03' y='56.58' style='font-size: 13.00px; font-family: "Arial";' textLength='181.44px' lengthAdjust='spacingAndGlyphs'>Disaster response technologies</text>
+<text x='145.03' y='79.34' style='font-size: 13.00px; font-family: "Arial";' textLength='104.78px' lengthAdjust='spacingAndGlyphs'>Built infrastructure</text>
+<text x='145.03' y='102.10' style='font-size: 13.00px; font-family: "Arial";' textLength='102.61px' lengthAdjust='spacingAndGlyphs'>Soft infrastructure</text>
 </g>
 </g>
 </svg>
