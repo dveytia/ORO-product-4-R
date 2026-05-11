@@ -4581,7 +4581,7 @@ bivariate_color_scale <- color_bivariate_map(nquantiles  = 10,
                                                  bottomleft  =  "#590156" , #"#820050", "#590156"
                                              # high vul, low governance
                                                  upperleft = "#ffe60f", # rgb(0,150,235, maxColorValue = 255)  
-                                                 ylab        = "Governance indicator",
+                                                 ylab        = "Governance metric",
                                                  xlab        = "Fishery vulnerability")
 
 # check
@@ -4662,7 +4662,7 @@ bivar_map_legend <- ggplot2::ggplot() +
     ggplot2::geom_point(data = dat_bivar_sum, mapping = aes(group_x, group_y, size = n_articles), shape = 21, show.legend = TRUE, fill = "grey30", alpha=0.8) +
     ggplot2::scale_size(breaks = size_brks, range = c(1, 4)) +
     
-    ggplot2::labs(x = "Fishery vulnerability", y = "Governance indicator") +
+    ggplot2::labs(x = "Fishery vulnerability", y = "Governance metric") +
     cowplot::theme_map() +
     guides(size = guide_legend(title = "Instances (N)", title.position = "right", title.hjust = 0.5, ncol = 1)) +
     ggplot2::theme(axis.title      = ggplot2::element_text(size = 11), 
@@ -5222,7 +5222,7 @@ gov_ggp <- plot_model(bivar_mod, type = "pred", terms = c("governance_indicator"
   geom_text(x=-Inf, y=Inf, label = modSummary$label[grepl("Govern", modSummary$Term)],
             inherit.aes = FALSE, vjust=1, hjust=0,size=3, check_overlap = TRUE)+
   labs(
-    x="Governance indicator",
+    x="Governance metric",
     y="Instances (N)"
   )+
   theme_minimal(base_size = 9)+
